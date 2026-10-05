@@ -28,19 +28,6 @@ function mergePermissionsWithDefaults(cached) {
         DEFAULT_PERMISSIONS.roles.ADMIN.actions.forEach(a => {
           if (!actions.includes(a)) actions.push(a);
         });
-      } else {
-        const defaultMods = DEFAULT_PERMISSIONS.roles[upperRole]?.modules || [];
-        defaultMods.forEach(m => {
-          if ((m === 'cngiasp' || m === 'lendon') && !modules.includes(m)) {
-            modules.push(m);
-          }
-        });
-        const defaultActs = DEFAULT_PERMISSIONS.roles[upperRole]?.actions || [];
-        defaultActs.forEach(a => {
-          if ((a === 'cngiasp.manage' || a === 'lendon.manage') && !actions.includes(a)) {
-            actions.push(a);
-          }
-        });
       }
 
       mergedRoles[upperRole] = {

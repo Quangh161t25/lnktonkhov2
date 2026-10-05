@@ -4,7 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { MODULE_DEFINITIONS, AVAILABLE_ACTIONS } from '../../../config/constants';
 import { buildCaiDatRows, saveCaiDatToGoogleSheet, parseCaiDatRows } from '../../../services/caiDatService';
-import { clearAllCaches } from '../../../utils/storage';
+import { clearAllCaches, setLocalItem, STORAGE_KEYS } from '../../../utils/storage';
 import { 
   Settings, 
   Warehouse, 
@@ -176,6 +176,7 @@ export function CaidatModule() {
         dataScopes: workingDataScopes
       };
       setPermissions(updatedPermissions);
+      setLocalItem(STORAGE_KEYS.PERMISSIONS, updatedPermissions);
       setWorkingRoles(sanitizedRoles);
 
       // 2. Build rows for CAI_DAT sheet

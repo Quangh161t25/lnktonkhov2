@@ -39,7 +39,7 @@ export const DEFAULT_PERMISSIONS = {
     },
     KHO: {
       modules: [
-        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanphamkho", "lendon", "ton_npp"
+        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanphamkho", "ton_npp"
       ],
       actions: [
         "nx.confirmWarehouse"
