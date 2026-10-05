@@ -55,7 +55,7 @@ const LOAI_HINH_OPTIONS = [
 export function XuatModule() {
   const { xuatData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, loadingModules } = useData();
   const { currentUser, hasActionPermission, canAccessWarehouse, resolveRoleKey } = useAuth();
-  const { getWarehouseOptions } = useSettings();
+  const { getWarehouseOptions, getAllSystemWarehouses } = useSettings();
 
   // Column Manager Hook
   const {
@@ -444,7 +444,9 @@ export function XuatModule() {
               }}
               className="px-2 py-1 border border-slate-200 rounded-md bg-white text-slate-700 font-medium focus:ring-1 focus:ring-orange-500 outline-none"
             >
-              <option value="">Tất cả kho</option>
+              {getWarehouseOptions().length > 1 && (
+                <option value="">{getWarehouseOptions().length === (getAllSystemWarehouses ? getAllSystemWarehouses().length : 0) ? 'Tất cả kho' : 'Tất cả kho phụ trách'}</option>
+              )}
               {getWarehouseOptions().map(w => (
                 <option key={w} value={w}>{w}</option>
               ))}

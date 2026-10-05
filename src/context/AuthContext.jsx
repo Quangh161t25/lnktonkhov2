@@ -188,14 +188,33 @@ export function AuthProvider({ children }) {
   }, [currentUser, permissions]);
 
   const getUserWarehouses = useCallback(() => {
-    if (!currentUser?.id) return null;
-    return permissions?.userWarehouses?.[currentUser.id] || null;
+    if (!currentUser) return null;
+    const userRole = (currentUser.role || '').toString().trim().toUpperCase();
+    if (userRole === 'ADMIN') return null; // Admin has full warehouse access
+
+    const userWhs = permissions?.userWarehouses;
+    if (!userWhs || typeof userWhs !== 'object') return null;
+
+    const normId = (currentUser.id || '').toString().trim().toLowerCase().normalize('NFC');
+    const normName = (currentUser.name || '').toString().trim().toLowerCase().normalize('NFC');
+
+    // Find key matching normalized ID or Name
+    const foundKey = Object.keys(userWhs).find(k => {
+      const normK = k.toString().trim().toLowerCase().normalize('NFC');
+      return (normId && normK === normId) || (normName && normK === normName);
+    });
+
+    if (foundKey && Array.isArray(userWhs[foundKey]) && userWhs[foundKey].length > 0) {
+      return userWhs[foundKey];
+    }
+    return null;
   }, [currentUser, permissions]);
 
   const canAccessWarehouse = useCallback((warehouseName) => {
     const userWh = getUserWarehouses();
     if (!userWh || !Array.isArray(userWh) || userWh.length === 0) return true;
-    const target = (warehouseName || '').toString().trim().toUpperCase();
+    if (!warehouseName) return false;
+    const target = warehouseName.toString().trim().toUpperCase();
     return userWh.some(w => w.toString().trim().toUpperCase() === target);
   }, [getUserWarehouses]);
 

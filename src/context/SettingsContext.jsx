@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { DEFAULT_APP_SETTINGS } from '../config/constants';
 import { getLocalItem, setLocalItem, STORAGE_KEYS } from '../utils/storage';
+import { useAuth } from './AuthContext';
 
 const SettingsContext = createContext(null);
 
 export function SettingsProvider({ children }) {
+  const { getUserWarehouses } = useAuth();
   const [appSettings, setAppSettings] = useState(() => getLocalItem(STORAGE_KEYS.SETTINGS, DEFAULT_APP_SETTINGS));
 
   useEffect(() => {
@@ -18,11 +20,26 @@ export function SettingsProvider({ children }) {
     }));
   }, []);
 
-  const getWarehouseOptions = useCallback(() => {
+  // All warehouses configured in the whole system (for Admin settings)
+  const getAllSystemWarehouses = useCallback(() => {
     return Array.isArray(appSettings.warehouses) && appSettings.warehouses.length > 0
       ? appSettings.warehouses
       : ['KHO 1', 'KHO 2', 'KHO 3', 'KHO 4', 'KHO 5'];
   }, [appSettings.warehouses]);
+
+  // Warehouses accessible to the current logged in / viewed user
+  const getWarehouseOptions = useCallback((includeAll = false) => {
+    const all = getAllSystemWarehouses();
+    if (includeAll) return all;
+
+    const userWh = getUserWarehouses ? getUserWarehouses() : null;
+    if (userWh && Array.isArray(userWh) && userWh.length > 0) {
+      const allowedNormalized = userWh.map(w => w.toString().trim().toUpperCase());
+      const filtered = all.filter(w => allowedNormalized.includes(w.toString().trim().toUpperCase()));
+      return filtered.length > 0 ? filtered : userWh;
+    }
+    return all;
+  }, [getAllSystemWarehouses, getUserWarehouses]);
 
   const getDefaultWarehouse = useCallback(() => {
     const list = getWarehouseOptions();
@@ -58,6 +75,7 @@ export function SettingsProvider({ children }) {
         appSettings,
         updateSettings,
         applyParsedSettings,
+        getAllSystemWarehouses,
         getWarehouseOptions,
         getDefaultWarehouse,
         isAllowedWarehouse

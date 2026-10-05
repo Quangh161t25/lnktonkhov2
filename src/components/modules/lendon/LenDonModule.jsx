@@ -82,7 +82,7 @@ export function LenDonModule() {
   } = useData();
 
   const { currentUser, hasActionPermission, canAccessWarehouse, resolveRoleKey } = useAuth();
-  const { getWarehouseOptions } = useSettings();
+  const { getWarehouseOptions, getAllSystemWarehouses } = useSettings();
 
   // Column Manager Hook
   const {
@@ -630,7 +630,9 @@ export function LenDonModule() {
               }}
               className="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-medium bg-slate-50/50"
             >
-              <option value="">Tất cả kho</option>
+              {getWarehouseOptions().length > 1 && (
+                <option value="">{getWarehouseOptions().length === (getAllSystemWarehouses ? getAllSystemWarehouses().length : 0) ? 'Tất cả kho' : 'Tất cả kho phụ trách'}</option>
+              )}
               {getWarehouseOptions().map(k => (
                 <option key={k} value={k}>{k}</option>
               ))}

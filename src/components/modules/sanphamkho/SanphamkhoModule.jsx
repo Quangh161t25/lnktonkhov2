@@ -231,17 +231,19 @@ export function SanphamkhoModule({ initialFilterProductId = '' }) {
 
         {/* Warehouse Filter */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-100 text-xs">
-          <button
-            onClick={() => {
-              setWarehouseFilter('');
-              setCurrentPage(1);
-            }}
-            className={`px-2.5 py-1 rounded-md font-bold transition ${
-              warehouseFilter === '' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Tất cả kho
-          </button>
+          {warehouses.length > 1 && (
+            <button
+              onClick={() => {
+                setWarehouseFilter('');
+                setCurrentPage(1);
+              }}
+              className={`px-2.5 py-1 rounded-md font-bold transition ${
+                warehouseFilter === '' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Tất cả kho
+            </button>
+          )}
 
           {warehouses.map(w => (
             <button

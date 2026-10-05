@@ -34,7 +34,7 @@ import {
 const STANDARD_ROLES = ['ADMIN', 'KT', 'KHO', 'NPP', 'KD', 'NVKD'];
 
 export function CaidatModule() {
-  const { appSettings, updateSettings, applyParsedSettings, getWarehouseOptions } = useSettings();
+  const { appSettings, updateSettings, applyParsedSettings, getAllSystemWarehouses, getWarehouseOptions } = useSettings();
   const { permissions, setPermissions, applyParsedPermissions, usersData, currentUser } = useAuth();
   const { caidatData, fetchModule, fetchUsersData } = useData();
 
@@ -67,7 +67,7 @@ export function CaidatModule() {
   const [sysAutoRefresh, setSysAutoRefresh] = useState(appSettings?.autoRefreshIntervalSec || 300);
 
   // Warehouses state
-  const [warehousesList, setWarehousesList] = useState(() => getWarehouseOptions());
+  const [warehousesList, setWarehousesList] = useState(() => getAllSystemWarehouses ? getAllSystemWarehouses() : getWarehouseOptions(true));
 
   // Permissions state (normalized uppercase role keys)
   const [workingRoles, setWorkingRoles] = useState(() => {
