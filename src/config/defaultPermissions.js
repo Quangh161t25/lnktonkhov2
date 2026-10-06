@@ -91,6 +91,9 @@ export const DEFAULT_PERMISSIONS = {
     }
   },
   userWarehouses: {
-    dự: ["KHO 1"]
+    dự: ["KHO 1"],
+    NV00024: ["KHO 1"],
+    trường: ["KHO 5"],
+    NV00032: ["KHO 5"]
   }
 };

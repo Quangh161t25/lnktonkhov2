@@ -302,16 +302,56 @@ export function CaidatModule() {
   };
 
   // User warehouse assignment toggle
+  const getUserAssignedWarehouses = (user) => {
+    if (!user) return [];
+    if (workingUserWarehouses[user.id]) return workingUserWarehouses[user.id];
+    const normId = (user.id || '').trim().toLowerCase();
+    const normName = (user.name || '').trim().toLowerCase();
+    const nameTokens = normName.split(/[\s\-_,.]+/).filter(Boolean);
+    const foundKey = Object.keys(workingUserWarehouses).find(k => {
+      const normK = k.trim().toLowerCase();
+      return normK === normId || normK === normName || nameTokens.includes(normK);
+    });
+    return foundKey ? workingUserWarehouses[foundKey] : [];
+  };
+
   const handleToggleUserWarehouse = (userId, warehouseName) => {
     if (!userId) return;
     const nextUserWh = { ...workingUserWarehouses };
-    const currentList = nextUserWh[userId] || [];
-    if (currentList.includes(warehouseName)) {
-      nextUserWh[userId] = currentList.filter(w => w !== warehouseName);
-      if (nextUserWh[userId].length === 0) delete nextUserWh[userId];
-    } else {
-      nextUserWh[userId] = [...currentList, warehouseName];
+    let targetKey = userId;
+    if (!nextUserWh[userId]) {
+      const user = (usersData || []).find(u => u.id === userId);
+      if (user) {
+        const normName = (user.name || '').trim().toLowerCase();
+        const tokens = normName.split(/[\s\-_,.]+/).filter(Boolean);
+        const aliasKey = Object.keys(nextUserWh).find(k => {
+          const normK = k.trim().toLowerCase();
+          return normK === normName || tokens.includes(normK);
+        });
+        if (aliasKey) {
+          targetKey = aliasKey;
+        }
+      }
     }
+
+    const currentList = nextUserWh[targetKey] || [];
+    let updatedList;
+    if (currentList.includes(warehouseName)) {
+      updatedList = currentList.filter(w => w !== warehouseName);
+    } else {
+      updatedList = [...currentList, warehouseName];
+    }
+
+    if (targetKey !== userId) {
+      delete nextUserWh[targetKey];
+    }
+
+    if (updatedList.length === 0) {
+      delete nextUserWh[userId];
+    } else {
+      nextUserWh[userId] = updatedList;
+    }
+
     setWorkingUserWarehouses(nextUserWh);
   };
 
@@ -751,7 +791,7 @@ export function CaidatModule() {
 
             <div className="space-y-3">
               {(usersData || []).filter(u => u.type === 'NHÂN VIÊN' || u.role === 'KHO' || u.role === 'ADMIN').map(u => {
-                const assignedWhs = workingUserWarehouses[u.id] || [];
+                const assignedWhs = getUserAssignedWarehouses(u);
                 const isRestricted = assignedWhs.length > 0;
 
                 return (
