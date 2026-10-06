@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Drawer } from '../../common/Drawer';
 import { ProductSearchCell } from '../../common/ProductSearchCell';
+import { CustomerSearchCell } from '../../common/CustomerSearchCell';
 import { useAuth } from '../../../context/AuthContext';
 import { useSettings } from '../../../context/SettingsContext';
 import { useData } from '../../../context/DataContext';
-import { formatDateInput, generateRandomOrderId, cleanNumber, formatCurrency, formatNumber } from '../../../utils/formatters';
+import { formatDateInput, generateRandomOrderId, cleanNumber, formatCurrency, formatNumber, removeVietnameseTones } from '../../../utils/formatters';
 import { calculateWarehouseStockMap } from '../../../utils/calculations';
 import { Plus, Trash2, Scan, UserCheck, Package, Building2, Tag, Calendar, BadgePercent } from 'lucide-react';
 
@@ -57,6 +58,7 @@ export function LenDonDrawer({
   const [trangThai, setTrangThai] = useState('Chờ xuất');
   const [initialSheetRows, setInitialSheetRows] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
+  const isNpp = currentUser ? resolveRoleKey(currentUser.role) === 'NPP' : false;
 
   const [items, setItems] = useState([
     { 
@@ -346,14 +348,30 @@ export function LenDonDrawer({
     }
   }, [editOrderRows, isOpen, getDefaultWarehouse]);
 
-  const handleCustomerSelect = (val) => {
-    const raw = (val || '').trim();
+  const handleCustomerSelect = (customerOrVal) => {
+    if (typeof customerOrVal === 'object' && customerOrVal !== null) {
+      setMaKh(customerOrVal.id || '');
+      setTenKhach(customerOrVal.name || customerOrVal.id || '');
+      return;
+    }
+    const raw = (customerOrVal || '').toString().trim().normalize('NFC');
     setTenKhach(raw);
-    const found = customerList.find(c => 
-      c.id?.toLowerCase() === raw.toLowerCase() || 
-      c.name?.toLowerCase() === raw.toLowerCase() ||
-      `${c.id} - ${c.name}`.toLowerCase() === raw.toLowerCase()
-    );
+    if (!raw) {
+      setMaKh('');
+      return;
+    }
+    const normRaw = removeVietnameseTones(raw.toLowerCase());
+    const found = customerList.find(c => {
+      const cId = (c.id || '').toLowerCase().normalize('NFC');
+      const cName = (c.name || '').toLowerCase().normalize('NFC');
+      const noToneName = removeVietnameseTones(cName);
+      return (
+        cId === normRaw ||
+        cName === raw.toLowerCase() ||
+        noToneName === normRaw ||
+        `${cId} - ${cName}` === raw.toLowerCase()
+      );
+    });
     if (found) {
       setMaKh(found.id);
       setTenKhach(found.name);
@@ -361,12 +379,11 @@ export function LenDonDrawer({
   };
 
   const handleMaKhChange = (val) => {
-    const raw = (val || '').trim();
+    const raw = (val || '').toString().trim().normalize('NFC');
     setMaKh(raw.toUpperCase());
-    const found = customerList.find(c => 
-      c.id?.toLowerCase() === raw.toLowerCase() ||
-      `${c.id} - ${c.name}`.toLowerCase() === raw.toLowerCase()
-    );
+    if (!raw) return;
+    const normRaw = raw.toLowerCase();
+    const found = customerList.find(c => (c.id || '').toLowerCase().normalize('NFC') === normRaw);
     if (found) {
       setMaKh(found.id);
       setTenKhach(found.name);
@@ -618,23 +635,29 @@ export function LenDonDrawer({
 
               {/* Tên khách / Khách hàng */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1">
-                  <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-                  Khách hàng / NPP
+                <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    Khách hàng / NPP <span className="text-red-500">*</span>
+                  </span>
+                  {maKh && (
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                      Mã: {maKh}
+                    </span>
+                  )}
                 </label>
-                <input
-                  list="customer-suggestions"
-                  type="text"
+                <CustomerSearchCell
                   value={tenKhach}
-                  onChange={(e) => handleCustomerSelect(e.target.value)}
-                  placeholder="Chọn hoặc nhập tên khách..."
-                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-medium bg-slate-50/50"
+                  selectedCode={maKh}
+                  onChange={(val) => handleCustomerSelect(val)}
+                  onSelectCustomer={(c) => {
+                    setMaKh(c.id || '');
+                    setTenKhach(c.name || c.id || '');
+                  }}
+                  customerList={customerList}
+                  placeholder="Gõ tên hoặc mã khách..."
+                  disabled={isNpp}
                 />
-                <datalist id="customer-suggestions">
-                  {customerList.map((c, idx) => (
-                    <option key={`cust-${c.id}-${idx}`} value={`${c.id} - ${c.name}`}>{c.name}</option>
-                  ))}
-                </datalist>
               </div>
 
               {/* Mã KH */}
@@ -643,18 +666,13 @@ export function LenDonDrawer({
                   Mã khách hàng
                 </label>
                 <input
-                  list="customer-code-suggestions"
                   type="text"
                   value={maKh}
                   onChange={(e) => handleMaKhChange(e.target.value)}
-                  placeholder="Mã KH..."
-                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-medium bg-slate-50/50 uppercase"
+                  placeholder="Mã KH (tự động điền)..."
+                  disabled={isNpp}
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-bold text-slate-700 bg-slate-50/50 uppercase"
                 />
-                <datalist id="customer-code-suggestions">
-                  {customerList.map((c, idx) => (
-                    <option key={`code-${c.id}-${idx}`} value={c.id}>{c.name}</option>
-                  ))}
-                </datalist>
               </div>
             </div>
 

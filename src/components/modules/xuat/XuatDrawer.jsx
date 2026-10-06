@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from '../../common/Drawer';
 import { ProductSearchCell } from '../../common/ProductSearchCell';
+import { CustomerSearchCell } from '../../common/CustomerSearchCell';
 import { useAuth } from '../../../context/AuthContext';
 import { useSettings } from '../../../context/SettingsContext';
 import { useData } from '../../../context/DataContext';
-import { formatDateInput, generateRandomOrderId, cleanNumber, formatCurrency, formatNumber } from '../../../utils/formatters';
+import { formatDateInput, generateRandomOrderId, cleanNumber, formatCurrency, formatNumber, removeVietnameseTones } from '../../../utils/formatters';
 import { calculateWarehouseStockMap } from '../../../utils/calculations';
 import { Plus, Trash2, Scan, UserCheck, Package, Building2 } from 'lucide-react';
 
@@ -324,14 +325,30 @@ export function XuatDrawer({
     }
   }, [editOrderRows, isOpen, getDefaultWarehouse]);
 
-  const handleCustomerSelect = (val) => {
-    const raw = (val || '').trim();
+  const handleCustomerSelect = (customerOrVal) => {
+    if (typeof customerOrVal === 'object' && customerOrVal !== null) {
+      setMaKh(customerOrVal.id || '');
+      setTenKhach(customerOrVal.name || customerOrVal.id || '');
+      return;
+    }
+    const raw = (customerOrVal || '').toString().trim().normalize('NFC');
     setTenKhach(raw);
-    const found = customerList.find(c => 
-      c.id?.toLowerCase() === raw.toLowerCase() || 
-      c.name?.toLowerCase() === raw.toLowerCase() ||
-      `${c.id} - ${c.name}`.toLowerCase() === raw.toLowerCase()
-    );
+    if (!raw) {
+      setMaKh('');
+      return;
+    }
+    const normRaw = removeVietnameseTones(raw.toLowerCase());
+    const found = customerList.find(c => {
+      const cId = (c.id || '').toLowerCase().normalize('NFC');
+      const cName = (c.name || '').toLowerCase().normalize('NFC');
+      const noToneName = removeVietnameseTones(cName);
+      return (
+        cId === normRaw ||
+        cName === raw.toLowerCase() ||
+        noToneName === normRaw ||
+        `${cId} - ${cName}` === raw.toLowerCase()
+      );
+    });
     if (found) {
       setMaKh(found.id);
       setTenKhach(found.name);
@@ -339,12 +356,11 @@ export function XuatDrawer({
   };
 
   const handleMaKhChange = (val) => {
-    const raw = (val || '').trim();
+    const raw = (val || '').toString().trim().normalize('NFC');
     setMaKh(raw.toUpperCase());
-    const found = customerList.find(c => 
-      c.id?.toLowerCase() === raw.toLowerCase() ||
-      `${c.id} - ${c.name}`.toLowerCase() === raw.toLowerCase()
-    );
+    if (!raw) return;
+    const normRaw = raw.toLowerCase();
+    const found = customerList.find(c => (c.id || '').toLowerCase().normalize('NFC') === normRaw);
     if (found) {
       setMaKh(found.id);
       setTenKhach(found.name);
@@ -663,34 +679,33 @@ export function XuatDrawer({
               <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Mã Khách hàng / NPP</label>
               <input
                 type="text"
-                list="xuatCustomerCodeDatalist"
                 value={maKh}
                 onChange={(e) => handleMaKhChange(e.target.value)}
                 placeholder="KH001 / NPP..."
                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none uppercase font-semibold"
               />
-              <datalist id="xuatCustomerCodeDatalist">
-                {customerList.map((c, idx) => (
-                  <option key={`xuat-code-${c.id}-${idx}`} value={c.id}>{c.name}</option>
-                ))}
-              </datalist>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Tên Khách hàng</label>
-              <input
-                type="text"
-                list="xuatCustomerDatalist"
+              <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
+                <span>Tên Khách hàng / NPP</span>
+                {maKh && (
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 normal-case">
+                    Mã: {maKh}
+                  </span>
+                )}
+              </label>
+              <CustomerSearchCell
                 value={tenKhach}
-                onChange={(e) => handleCustomerSelect(e.target.value)}
-                placeholder="Chọn hoặc nhập tên khách..."
-                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+                selectedCode={maKh}
+                onChange={(val) => handleCustomerSelect(val)}
+                onSelectCustomer={(c) => {
+                  setMaKh(c.id || '');
+                  setTenKhach(c.name || c.id || '');
+                }}
+                customerList={customerList}
+                placeholder="Chọn hoặc tìm tên khách..."
               />
-              <datalist id="xuatCustomerDatalist">
-                {customerList.map((c, idx) => (
-                  <option key={`xuat-cust-${c.id}-${idx}`} value={`${c.id} - ${c.name}`}>{c.name}</option>
-                ))}
-              </datalist>
             </div>
           </div>
         </div>
