@@ -21,7 +21,7 @@ export function NhapDrawer({
   onDeleteOrder,
   onOpenBarcodeScan 
 }) {
-  const { currentUser, usersData, hasActionPermission } = useAuth();
+  const { currentUser, usersData, hasActionPermission, getHiddenProductIds } = useAuth();
   const { getWarehouseOptions, getDefaultWarehouse } = useSettings();
   const { 
     nhapData, 
@@ -29,7 +29,9 @@ export function NhapDrawer({
     transferData, 
     warehouseProductData, 
     productData, 
-    getProductMap 
+    getProductMap,
+    fetchModule,
+    fetchUsersData
   } = useData();
 
   const [date, setDate] = useState(formatDateInput(new Date()));
@@ -72,45 +74,111 @@ export function NhapDrawer({
     return warehouseStockMap.get(`${targetKho}|${targetId}`) || 0;
   };
 
+  // Ensure essential suggestion datasets are loaded when drawer opens
+  useEffect(() => {
+    if (isOpen) {
+      if (!productData || productData.length <= 1) fetchModule('sanpham');
+      if (!warehouseProductData || warehouseProductData.length <= 1) fetchModule('sanphamkho');
+      if (!usersData || usersData.length === 0) {
+        if (fetchUsersData) fetchUsersData();
+      }
+    }
+  }, [isOpen, productData, warehouseProductData, usersData, fetchModule, fetchUsersData]);
+
   // Supplier suggestions
   const supplierList = useMemo(() => {
-    return (usersData || []).filter(u => 
-      u.id && (
-        u.type?.includes('NCC') || 
-        u.type?.includes('CUNG CẤP') || 
-        u.type?.includes('KHÁCH') || 
-        u.type?.includes('NPP') || 
-        u.role === 'NPP' || 
-        u.role === 'KH'
-      )
-    );
-  }, [usersData]);
+    const map = new Map();
+
+    // 1. Scan usersData for Suppliers and Partners
+    (usersData || []).forEach(u => {
+      if (!u.id) return;
+      const uType = (u.type || '').toString().toUpperCase();
+      const uRole = (u.role || '').toString().toUpperCase();
+      if (
+        uType.includes('NCC') || 
+        uType.includes('CUNG CẤP') || 
+        uType.includes('KHÁCH') || 
+        uType.includes('NPP') || 
+        uRole === 'NPP' || 
+        uRole === 'KH'
+      ) {
+        const idNorm = u.id.toString().trim();
+        const nameNorm = (u.name || idNorm).toString().trim();
+        map.set(idNorm.toLowerCase(), {
+          id: idNorm,
+          name: nameNorm,
+          type: u.type || u.role
+        });
+      }
+    });
+
+    // 2. Scan historical nhapData rows for supplier pairs
+    (nhapData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const maKhVal = (r[4] || '').toString().trim();
+      const tenKhVal = (r[5] || '').toString().trim();
+      if (maKhVal || tenKhVal) {
+        const key = (maKhVal || tenKhVal).toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: maKhVal || tenKhVal,
+            name: tenKhVal || maKhVal,
+            type: 'NCC'
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [usersData, nhapData]);
 
   // Product catalog list for autocomplete
   const productList = useMemo(() => {
+    const hiddenIds = new Set((getHiddenProductIds ? getHiddenProductIds() : []).map(id => (id || '').toString().trim().toUpperCase()));
     const map = new Map();
+
+    const addProduct = (rawId, rawName, fallbackPrice = 0) => {
+      if (!rawId) return;
+      const id = rawId.toString().trim().toUpperCase();
+      if (!id || hiddenIds.has(id)) return; // SECURITY: filter hidden products
+      const idKey = id.toLowerCase();
+      if (map.has(idKey)) return;
+
+      map.set(idKey, {
+        id,
+        name: (rawName || id).toString().trim(),
+        price: fallbackPrice
+      });
+    };
+
+    // 1. Scan productData (DS_SP)
     (productData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
       const id = (r[0] || '').toString().trim();
-      if (id) {
-        map.set(id.toLowerCase(), {
-          id,
-          name: (r[1] || '').toString().trim(),
-          price: cleanNumber(r[4]) || 0
-        });
-      }
+      const name = (r[1] || '').toString().trim();
+      const catalogPrice = cleanNumber(r[4]) || 0;
+      addProduct(id, name, catalogPrice);
     });
+
+    // 2. Scan warehouseProductData (DS_SP_KHO)
     (warehouseProductData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
       const id = (r[2] || '').toString().trim();
-      if (id && !map.has(id.toLowerCase())) {
-        map.set(id.toLowerCase(), {
-          id,
-          name: (r[3] || '').toString().trim(),
-          price: 0
-        });
-      }
+      const name = (r[3] || '').toString().trim();
+      addProduct(id, name, 0);
     });
-    return Array.from(map.values());
-  }, [productData, warehouseProductData]);
+
+    // 3. Scan historical nhapData
+    (nhapData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const id = (r[6] || '').toString().trim();
+      const name = (r[7] || '').toString().trim();
+      const donGia = cleanNumber(r[9]) || 0;
+      addProduct(id, name, donGia);
+    });
+
+    return Array.from(map.values()).sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+  }, [productData, warehouseProductData, nhapData, getHiddenProductIds]);
 
   const [initialSnapshot, setInitialSnapshot] = useState('');
 
@@ -214,6 +282,19 @@ export function NhapDrawer({
     const found = supplierList.find(s => 
       s.id?.toLowerCase() === raw.toLowerCase() || 
       s.name?.toLowerCase() === raw.toLowerCase() ||
+      `${s.id} - ${s.name}`.toLowerCase() === raw.toLowerCase()
+    );
+    if (found) {
+      setMaKh(found.id);
+      setTenKhach(found.name);
+    }
+  };
+
+  const handleMaKhChange = (val) => {
+    const raw = (val || '').trim();
+    setMaKh(raw.toUpperCase());
+    const found = supplierList.find(s => 
+      s.id?.toLowerCase() === raw.toLowerCase() || 
       `${s.id} - ${s.name}`.toLowerCase() === raw.toLowerCase()
     );
     if (found) {
@@ -531,11 +612,17 @@ export function NhapDrawer({
               <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Mã Nhà Cung Cấp</label>
               <input
                 type="text"
+                list="nhapSupplierCodeDatalist"
                 value={maKh}
-                onChange={(e) => setMaKh(e.target.value)}
+                onChange={(e) => handleMaKhChange(e.target.value)}
                 placeholder="NCC001"
                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none uppercase font-semibold"
               />
+              <datalist id="nhapSupplierCodeDatalist">
+                {supplierList.map((s, idx) => (
+                  <option key={`nhap-code-${s.id}-${idx}`} value={s.id}>{s.name}</option>
+                ))}
+              </datalist>
             </div>
 
             <div>
@@ -548,6 +635,11 @@ export function NhapDrawer({
                 placeholder="Chọn hoặc nhập tên NCC..."
                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none font-medium"
               />
+              <datalist id="nhapSupplierDatalist">
+                {supplierList.map((s, idx) => (
+                  <option key={`nhap-sup-${s.id}-${idx}`} value={`${s.id} - ${s.name}`}>{s.name}</option>
+                ))}
+              </datalist>
             </div>
           </div>
         </div>

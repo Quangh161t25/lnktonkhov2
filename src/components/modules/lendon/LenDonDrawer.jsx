@@ -30,7 +30,7 @@ export function LenDonDrawer({
   onDeleteOrder,
   onOpenBarcodeScan 
 }) {
-  const { currentUser, usersData, hasActionPermission } = useAuth();
+  const { currentUser, usersData, hasActionPermission, getHiddenProductIds, resolveRoleKey } = useAuth();
   const { getWarehouseOptions, getDefaultWarehouse } = useSettings();
   const { 
     nhapData, 
@@ -39,9 +39,12 @@ export function LenDonDrawer({
     warehouseProductData, 
     productData, 
     cngiaspData,
+    lenDonData,
     getProductMap,
     getLatestPriceMap,
-    getPriceAtDate 
+    getPriceAtDate,
+    fetchModule,
+    fetchUsersData
   } = useData();
 
   const [date, setDate] = useState(formatDateInput(new Date()));
@@ -84,61 +87,146 @@ export function LenDonDrawer({
     return warehouseStockMap.get(`${targetKho}|${targetId}`) || 0;
   };
 
-  const customerList = useMemo(() => {
-    return (usersData || []).filter(u => 
-      u.id && (
-        u.type?.includes('KHÁCH') || 
-        u.type?.includes('NPP') || 
-        u.role === 'NPP' || 
-        u.role === 'KH'
-      )
-    );
-  }, [usersData]);
+  // Ensure essential suggestion datasets are loaded when drawer opens
+  useEffect(() => {
+    if (isOpen) {
+      if (!productData || productData.length <= 1) fetchModule('sanpham');
+      if (!cngiaspData || cngiaspData.length <= 1) fetchModule('cngiasp');
+      if (!warehouseProductData || warehouseProductData.length <= 1) fetchModule('sanphamkho');
+      if (!usersData || usersData.length === 0) {
+        if (fetchUsersData) fetchUsersData();
+      }
+    }
+  }, [isOpen, productData, cngiaspData, warehouseProductData, usersData, fetchModule, fetchUsersData]);
 
-  // Product list for search & auto-fill evaluated according to selected order `date`
-  const productList = useMemo(() => {
+  const customerList = useMemo(() => {
+    const role = currentUser ? resolveRoleKey(currentUser.role) : '';
+    // SECURITY: If currentUser is an NPP, restrict suggestions strictly to their own account
+    if (role === 'NPP' && currentUser?.id) {
+      return [{
+        id: currentUser.id,
+        name: currentUser.name || currentUser.id,
+        type: 'NPP'
+      }];
+    }
+
     const map = new Map();
 
-    // First scan productData
-    (productData || []).slice(1).forEach(r => {
-      if (!r || !Array.isArray(r)) return;
-      const id = (r[0] || '').toString().trim();
-      if (!id) return;
-      const catalogPrice = cleanNumber(r[4]) || 0;
-      const priceInfo = getPriceAtDate 
-        ? getPriceAtDate(id, date) 
-        : { price: catalogPrice, effectiveDate: null, isFromCngiasp: false };
-
-      map.set(id.toLowerCase(), {
-        id,
-        name: (r[1] || '').toString().trim(),
-        price: priceInfo?.price !== undefined ? priceInfo.price : catalogPrice,
-        priceSourceDate: priceInfo?.effectiveDate || null,
-        isFromCngiasp: Boolean(priceInfo?.isFromCngiasp)
-      });
-    });
-
-    // Also include warehouseProductData if any
-    (warehouseProductData || []).slice(1).forEach(r => {
-      if (!r || !Array.isArray(r)) return;
-      const id = (r[2] || '').toString().trim();
-      if (id && !map.has(id.toLowerCase())) {
-        const priceInfo = getPriceAtDate 
-          ? getPriceAtDate(id, date) 
-          : { price: 0, effectiveDate: null, isFromCngiasp: false };
-
-        map.set(id.toLowerCase(), {
-          id,
-          name: (r[3] || '').toString().trim(),
-          price: priceInfo?.price !== undefined ? priceInfo.price : 0,
-          priceSourceDate: priceInfo?.effectiveDate || null,
-          isFromCngiasp: Boolean(priceInfo?.isFromCngiasp)
+    // 1. Scan usersData for Customers and NPPs
+    (usersData || []).forEach(u => {
+      if (!u.id) return;
+      const uType = (u.type || '').toString().toUpperCase();
+      const uRole = (u.role || '').toString().toUpperCase();
+      if (uType.includes('KHÁCH') || uType.includes('NPP') || uRole === 'NPP' || uRole === 'KH') {
+        const idNorm = u.id.toString().trim();
+        const nameNorm = (u.name || idNorm).toString().trim();
+        map.set(idNorm.toLowerCase(), {
+          id: idNorm,
+          name: nameNorm,
+          type: u.type || u.role
         });
       }
     });
 
-    return Array.from(map.values());
-  }, [productData, warehouseProductData, date, getPriceAtDate]);
+    // 2. Scan historical LEN_DON rows for customer pairs
+    (lenDonData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const maKhVal = (r[4] || '').toString().trim();
+      const tenKhVal = (r[5] || '').toString().trim();
+      if (maKhVal || tenKhVal) {
+        const key = (maKhVal || tenKhVal).toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: maKhVal || tenKhVal,
+            name: tenKhVal || maKhVal,
+            type: 'Khách hàng'
+          });
+        }
+      }
+    });
+
+    // 3. Scan historical XUAT rows for customer pairs
+    (xuatData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const maKhVal = (r[4] || '').toString().trim();
+      const tenKhVal = (r[5] || '').toString().trim();
+      if (maKhVal || tenKhVal) {
+        const key = (maKhVal || tenKhVal).toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: maKhVal || tenKhVal,
+            name: tenKhVal || maKhVal,
+            type: 'Khách hàng'
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [currentUser, usersData, lenDonData, xuatData, resolveRoleKey]);
+
+  // Product list for search & auto-fill evaluated according to selected order `date`
+  const productList = useMemo(() => {
+    const hiddenIds = new Set((getHiddenProductIds ? getHiddenProductIds() : []).map(id => (id || '').toString().trim().toUpperCase()));
+    const map = new Map();
+
+    const addProduct = (rawId, rawName, fallbackPrice = 0) => {
+      if (!rawId) return;
+      const id = rawId.toString().trim().toUpperCase();
+      if (!id || hiddenIds.has(id)) return; // SECURITY: filter hidden products
+      const idKey = id.toLowerCase();
+      if (map.has(idKey)) return;
+
+      const priceInfo = getPriceAtDate 
+        ? getPriceAtDate(id, date) 
+        : { price: fallbackPrice, effectiveDate: null, isFromCngiasp: false };
+
+      map.set(idKey, {
+        id,
+        name: (rawName || id).toString().trim(),
+        price: priceInfo?.price !== undefined ? priceInfo.price : fallbackPrice,
+        priceSourceDate: priceInfo?.effectiveDate || null,
+        isFromCngiasp: Boolean(priceInfo?.isFromCngiasp)
+      });
+    };
+
+    // 1. First scan productData (DS_SP)
+    (productData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const id = (r[0] || '').toString().trim();
+      const name = (r[1] || '').toString().trim();
+      const catalogPrice = cleanNumber(r[4]) || 0;
+      addProduct(id, name, catalogPrice);
+    });
+
+    // 2. Scan cngiaspData (CN_GIA_SP)
+    (cngiaspData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const id = (r[2] || '').toString().trim();
+      const name = (r[3] || '').toString().trim();
+      const sellingPrice = cleanNumber(r[5]) || 0;
+      addProduct(id, name, sellingPrice);
+    });
+
+    // 3. Scan warehouseProductData (DS_SP_KHO)
+    (warehouseProductData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const id = (r[2] || '').toString().trim();
+      const name = (r[3] || '').toString().trim();
+      addProduct(id, name, 0);
+    });
+
+    // 4. Scan historical lenDonData
+    (lenDonData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const id = (r[6] || '').toString().trim();
+      const name = (r[7] || '').toString().trim();
+      const donGia = cleanNumber(r[9]) || 0;
+      addProduct(id, name, donGia);
+    });
+
+    return Array.from(map.values()).sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+  }, [productData, cngiaspData, warehouseProductData, lenDonData, date, getPriceAtDate, getHiddenProductIds]);
 
   // Helper to get effective price of a single product ID on a specific date (defaults to current order date)
   const getProductPriceInfo = useCallback((rawId, targetDate = date) => {
@@ -264,6 +352,19 @@ export function LenDonDrawer({
     const found = customerList.find(c => 
       c.id?.toLowerCase() === raw.toLowerCase() || 
       c.name?.toLowerCase() === raw.toLowerCase() ||
+      `${c.id} - ${c.name}`.toLowerCase() === raw.toLowerCase()
+    );
+    if (found) {
+      setMaKh(found.id);
+      setTenKhach(found.name);
+    }
+  };
+
+  const handleMaKhChange = (val) => {
+    const raw = (val || '').trim();
+    setMaKh(raw.toUpperCase());
+    const found = customerList.find(c => 
+      c.id?.toLowerCase() === raw.toLowerCase() ||
       `${c.id} - ${c.name}`.toLowerCase() === raw.toLowerCase()
     );
     if (found) {
@@ -530,8 +631,8 @@ export function LenDonDrawer({
                   className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-medium bg-slate-50/50"
                 />
                 <datalist id="customer-suggestions">
-                  {customerList.map(c => (
-                    <option key={c.id} value={`${c.id} - ${c.name}`}>{c.name}</option>
+                  {customerList.map((c, idx) => (
+                    <option key={`cust-${c.id}-${idx}`} value={`${c.id} - ${c.name}`}>{c.name}</option>
                   ))}
                 </datalist>
               </div>
@@ -542,12 +643,18 @@ export function LenDonDrawer({
                   Mã khách hàng
                 </label>
                 <input
+                  list="customer-code-suggestions"
                   type="text"
                   value={maKh}
-                  onChange={(e) => setMaKh(e.target.value.toUpperCase())}
+                  onChange={(e) => handleMaKhChange(e.target.value)}
                   placeholder="Mã KH..."
                   className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-medium bg-slate-50/50 uppercase"
                 />
+                <datalist id="customer-code-suggestions">
+                  {customerList.map((c, idx) => (
+                    <option key={`code-${c.id}-${idx}`} value={c.id}>{c.name}</option>
+                  ))}
+                </datalist>
               </div>
             </div>
 

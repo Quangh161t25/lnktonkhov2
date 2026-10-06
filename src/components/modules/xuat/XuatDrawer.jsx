@@ -29,7 +29,7 @@ export function XuatDrawer({
   onDeleteOrder,
   onOpenBarcodeScan 
 }) {
-  const { currentUser, usersData, hasActionPermission } = useAuth();
+  const { currentUser, usersData, hasActionPermission, getHiddenProductIds, resolveRoleKey } = useAuth();
   const { getWarehouseOptions, getDefaultWarehouse } = useSettings();
   const { 
     nhapData, 
@@ -37,7 +37,12 @@ export function XuatDrawer({
     transferData, 
     warehouseProductData, 
     productData, 
-    getProductMap 
+    cngiaspData,
+    lenDonData,
+    getProductMap,
+    getPriceAtDate,
+    fetchModule,
+    fetchUsersData
   } = useData();
 
   const [date, setDate] = useState(formatDateInput(new Date()));
@@ -79,41 +84,146 @@ export function XuatDrawer({
     return warehouseStockMap.get(`${targetKho}|${targetId}`) || 0;
   };
 
-  const customerList = useMemo(() => {
-    return (usersData || []).filter(u => 
-      u.id && (
-        u.type?.includes('KHÁCH') || 
-        u.type?.includes('NPP') || 
-        u.role === 'NPP' || 
-        u.role === 'KH'
-      )
-    );
-  }, [usersData]);
+  // Ensure essential suggestion datasets are loaded when drawer opens
+  useEffect(() => {
+    if (isOpen) {
+      if (!productData || productData.length <= 1) fetchModule('sanpham');
+      if (!cngiaspData || cngiaspData.length <= 1) fetchModule('cngiasp');
+      if (!warehouseProductData || warehouseProductData.length <= 1) fetchModule('sanphamkho');
+      if (!usersData || usersData.length === 0) {
+        if (fetchUsersData) fetchUsersData();
+      }
+    }
+  }, [isOpen, productData, cngiaspData, warehouseProductData, usersData, fetchModule, fetchUsersData]);
 
-  const productList = useMemo(() => {
+  const customerList = useMemo(() => {
+    const role = currentUser ? resolveRoleKey(currentUser.role) : '';
+    // SECURITY: If currentUser is an NPP, restrict suggestions strictly to their own account
+    if (role === 'NPP' && currentUser?.id) {
+      return [{
+        id: currentUser.id,
+        name: currentUser.name || currentUser.id,
+        type: 'NPP'
+      }];
+    }
+
     const map = new Map();
+
+    // 1. Scan usersData for Customers and NPPs
+    (usersData || []).forEach(u => {
+      if (!u.id) return;
+      const uType = (u.type || '').toString().toUpperCase();
+      const uRole = (u.role || '').toString().toUpperCase();
+      if (uType.includes('KHÁCH') || uType.includes('NPP') || uRole === 'NPP' || uRole === 'KH') {
+        const idNorm = u.id.toString().trim();
+        const nameNorm = (u.name || idNorm).toString().trim();
+        map.set(idNorm.toLowerCase(), {
+          id: idNorm,
+          name: nameNorm,
+          type: u.type || u.role
+        });
+      }
+    });
+
+    // 2. Scan historical XUAT rows for customer pairs
+    (xuatData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const maKhVal = (r[4] || '').toString().trim();
+      const tenKhVal = (r[5] || '').toString().trim();
+      if (maKhVal || tenKhVal) {
+        const key = (maKhVal || tenKhVal).toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: maKhVal || tenKhVal,
+            name: tenKhVal || maKhVal,
+            type: 'Khách hàng'
+          });
+        }
+      }
+    });
+
+    // 3. Scan historical LEN_DON rows for customer pairs
+    (lenDonData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const maKhVal = (r[4] || '').toString().trim();
+      const tenKhVal = (r[5] || '').toString().trim();
+      if (maKhVal || tenKhVal) {
+        const key = (maKhVal || tenKhVal).toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: maKhVal || tenKhVal,
+            name: tenKhVal || maKhVal,
+            type: 'Khách hàng'
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [currentUser, usersData, xuatData, lenDonData, resolveRoleKey]);
+
+  // Product list for search & auto-fill evaluated according to selected order `date`
+  const productList = useMemo(() => {
+    const hiddenIds = new Set((getHiddenProductIds ? getHiddenProductIds() : []).map(id => (id || '').toString().trim().toUpperCase()));
+    const map = new Map();
+
+    const addProduct = (rawId, rawName, fallbackPrice = 0) => {
+      if (!rawId) return;
+      const id = rawId.toString().trim().toUpperCase();
+      if (!id || hiddenIds.has(id)) return; // SECURITY: filter hidden products
+      const idKey = id.toLowerCase();
+      if (map.has(idKey)) return;
+
+      const priceInfo = getPriceAtDate 
+        ? getPriceAtDate(id, date) 
+        : { price: fallbackPrice, effectiveDate: null, isFromCngiasp: false };
+
+      map.set(idKey, {
+        id,
+        name: (rawName || id).toString().trim(),
+        price: priceInfo?.price !== undefined ? priceInfo.price : fallbackPrice,
+        priceSourceDate: priceInfo?.effectiveDate || null,
+        isFromCngiasp: Boolean(priceInfo?.isFromCngiasp)
+      });
+    };
+
+    // 1. First scan productData (DS_SP)
     (productData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
       const id = (r[0] || '').toString().trim();
-      if (id) {
-        map.set(id.toLowerCase(), {
-          id,
-          name: (r[1] || '').toString().trim(),
-          price: cleanNumber(r[4]) || 0
-        });
-      }
+      const name = (r[1] || '').toString().trim();
+      const catalogPrice = cleanNumber(r[4]) || 0;
+      addProduct(id, name, catalogPrice);
     });
-    (warehouseProductData || []).slice(1).forEach(r => {
+
+    // 2. Scan cngiaspData (CN_GIA_SP)
+    (cngiaspData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
       const id = (r[2] || '').toString().trim();
-      if (id && !map.has(id.toLowerCase())) {
-        map.set(id.toLowerCase(), {
-          id,
-          name: (r[3] || '').toString().trim(),
-          price: 0
-        });
-      }
+      const name = (r[3] || '').toString().trim();
+      const sellingPrice = cleanNumber(r[5]) || 0;
+      addProduct(id, name, sellingPrice);
     });
-    return Array.from(map.values());
-  }, [productData, warehouseProductData]);
+
+    // 3. Scan warehouseProductData (DS_SP_KHO)
+    (warehouseProductData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const id = (r[2] || '').toString().trim();
+      const name = (r[3] || '').toString().trim();
+      addProduct(id, name, 0);
+    });
+
+    // 4. Scan historical xuatData
+    (xuatData || []).slice(1).forEach(r => {
+      if (!r || !Array.isArray(r)) return;
+      const id = (r[6] || '').toString().trim();
+      const name = (r[7] || '').toString().trim();
+      const donGia = cleanNumber(r[9]) || 0;
+      addProduct(id, name, donGia);
+    });
+
+    return Array.from(map.values()).sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+  }, [productData, cngiaspData, warehouseProductData, xuatData, date, getPriceAtDate, getHiddenProductIds]);
 
   const [initialSnapshot, setInitialSnapshot] = useState('');
 
@@ -228,14 +338,29 @@ export function XuatDrawer({
     }
   };
 
+  const handleMaKhChange = (val) => {
+    const raw = (val || '').trim();
+    setMaKh(raw.toUpperCase());
+    const found = customerList.find(c => 
+      c.id?.toLowerCase() === raw.toLowerCase() ||
+      `${c.id} - ${c.name}`.toLowerCase() === raw.toLowerCase()
+    );
+    if (found) {
+      setMaKh(found.id);
+      setTenKhach(found.name);
+    }
+  };
+
   const handleProductSelect = (index, product) => {
     if (!product) return;
     const next = [...items];
     const item = next[index];
     item.idSp = product.id;
     item.tenSp = product.name;
-    item.donGia = product.price || 0;
-    item.thanhTien = (cleanNumber(item.slg) || 1) * (product.price || 0);
+    const priceInfo = getPriceAtDate ? getPriceAtDate(product.id, date) : { price: product.price || 0 };
+    const effectivePrice = priceInfo?.price !== undefined ? priceInfo.price : (product.price || 0);
+    item.donGia = effectivePrice;
+    item.thanhTien = (cleanNumber(item.slg) || 1) * effectivePrice;
     setItems(next);
   };
 
@@ -250,11 +375,13 @@ export function XuatDrawer({
     }
 
     item.idSp = targetId;
+    const priceInfo = getPriceAtDate ? getPriceAtDate(targetId, date) : { price: 0 };
     const found = productMap.get(targetId.toLowerCase());
-    if (found) {
-      item.tenSp = found.name;
-      item.donGia = found.price || 0;
-      item.thanhTien = (cleanNumber(item.slg) || 1) * (found.price || 0);
+    if (found || (priceInfo && priceInfo.price > 0)) {
+      if (found) item.tenSp = found.name;
+      const effectivePrice = priceInfo?.price !== undefined && priceInfo.price > 0 ? priceInfo.price : (found?.price || 0);
+      item.donGia = effectivePrice;
+      item.thanhTien = (cleanNumber(item.slg) || 1) * effectivePrice;
     }
     setItems(next);
   };
@@ -536,11 +663,17 @@ export function XuatDrawer({
               <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Mã Khách hàng / NPP</label>
               <input
                 type="text"
+                list="xuatCustomerCodeDatalist"
                 value={maKh}
-                onChange={(e) => setMaKh(e.target.value)}
+                onChange={(e) => handleMaKhChange(e.target.value)}
                 placeholder="KH001 / NPP..."
                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none uppercase font-semibold"
               />
+              <datalist id="xuatCustomerCodeDatalist">
+                {customerList.map((c, idx) => (
+                  <option key={`xuat-code-${c.id}-${idx}`} value={c.id}>{c.name}</option>
+                ))}
+              </datalist>
             </div>
 
             <div>
@@ -553,6 +686,11 @@ export function XuatDrawer({
                 placeholder="Chọn hoặc nhập tên khách..."
                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none font-medium"
               />
+              <datalist id="xuatCustomerDatalist">
+                {customerList.map((c, idx) => (
+                  <option key={`xuat-cust-${c.id}-${idx}`} value={`${c.id} - ${c.name}`}>{c.name}</option>
+                ))}
+              </datalist>
             </div>
           </div>
         </div>

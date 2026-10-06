@@ -53,7 +53,7 @@ const LOAI_HINH_OPTIONS = [
 ];
 
 export function XuatModule() {
-  const { xuatData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, loadingModules } = useData();
+  const { xuatData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, fetchUsersData, loadingModules } = useData();
   const { currentUser, hasActionPermission, canAccessWarehouse, resolveRoleKey } = useAuth();
   const { getWarehouseOptions, getAllSystemWarehouses } = useSettings();
 
@@ -85,13 +85,23 @@ export function XuatModule() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editOrderRows, setEditOrderRows] = useState(null);
 
-  // Always fetch latest xuat data on mount
+  // Always fetch latest data on mount: xuat, cngiasp, sanpham, sanphamkho, and usersData (for suggestions)
   React.useEffect(() => {
     fetchModule('xuat');
-  }, [fetchModule]);
+    fetchModule('cngiasp');
+    fetchModule('sanpham');
+    fetchModule('sanphamkho');
+    if (fetchUsersData) fetchUsersData();
+  }, [fetchModule, fetchUsersData]);
 
   const handleRefresh = async () => {
-    await fetchModule('xuat', true);
+    await Promise.all([
+      fetchModule('xuat', true),
+      fetchModule('cngiasp', true),
+      fetchModule('sanpham', true),
+      fetchModule('sanphamkho', true),
+      fetchUsersData ? fetchUsersData() : Promise.resolve()
+    ]);
   };
 
   const isLoading = Boolean(loadingModules?.xuat);

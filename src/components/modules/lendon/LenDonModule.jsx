@@ -75,6 +75,7 @@ export function LenDonModule() {
     deleteRow, 
     deleteOrder, 
     fetchModule, 
+    fetchUsersData,
     loadingModules,
     getLatestPriceMap,
     getPriceAtDate,
@@ -113,16 +114,22 @@ export function LenDonModule() {
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [printOrderRows, setPrintOrderRows] = useState(null);
 
-  // Always fetch latest data on mount: both lendon and cngiasp (to guarantee latest prices)
+  // Always fetch latest data on mount: lendon, cngiasp, sanpham, sanphamkho, and usersData (for suggestions)
   useEffect(() => {
     fetchModule('lendon');
     fetchModule('cngiasp');
-  }, [fetchModule]);
+    fetchModule('sanpham');
+    fetchModule('sanphamkho');
+    if (fetchUsersData) fetchUsersData();
+  }, [fetchModule, fetchUsersData]);
 
   const handleRefresh = async () => {
     await Promise.all([
       fetchModule('lendon', true),
-      fetchModule('cngiasp', true)
+      fetchModule('cngiasp', true),
+      fetchModule('sanpham', true),
+      fetchModule('sanphamkho', true),
+      fetchUsersData ? fetchUsersData() : Promise.resolve()
     ]);
   };
 

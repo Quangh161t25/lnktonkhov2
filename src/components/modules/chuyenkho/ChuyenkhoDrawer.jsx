@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from '../../common/Drawer';
 import { ProductSearchCell } from '../../common/ProductSearchCell';
+import { useAuth } from '../../../context/AuthContext';
 import { useSettings } from '../../../context/SettingsContext';
 import { useData } from '../../../context/DataContext';
 import { formatDateInput, generateRandomOrderId, cleanNumber } from '../../../utils/formatters';
 import { Plus, Trash2 } from 'lucide-react';
 
 export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
+  const { getHiddenProductIds } = useAuth();
   const { getWarehouseOptions } = useSettings();
-  const { productData, warehouseProductData, getProductMap } = useData();
+  const { productData, warehouseProductData, getProductMap, fetchModule } = useData();
 
   const [date, setDate] = useState(formatDateInput(new Date()));
   const [mdh, setMdh] = useState('');
@@ -25,11 +27,21 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
   const productMap = useMemo(() => getProductMap(), [getProductMap]);
   const warehouses = useMemo(() => getWarehouseOptions(), [getWarehouseOptions]);
 
+  // Ensure essential suggestion datasets are loaded when drawer opens
+  useEffect(() => {
+    if (isOpen) {
+      if (!productData || productData.length <= 1) fetchModule('sanpham');
+      if (!warehouseProductData || warehouseProductData.length <= 1) fetchModule('sanphamkho');
+    }
+  }, [isOpen, productData, warehouseProductData, fetchModule]);
+
   const productList = useMemo(() => {
+    const hiddenIds = new Set((getHiddenProductIds ? getHiddenProductIds() : []).map(id => (id || '').toString().trim().toUpperCase()));
     const map = new Map();
+
     (productData || []).slice(1).forEach(r => {
       const id = (r[0] || '').toString().trim();
-      if (id) {
+      if (id && !hiddenIds.has(id.toUpperCase())) {
         map.set(id.toLowerCase(), {
           id,
           name: (r[1] || '').toString().trim(),
@@ -37,9 +49,10 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
         });
       }
     });
+
     (warehouseProductData || []).slice(1).forEach(r => {
       const id = (r[2] || '').toString().trim();
-      if (id && !map.has(id.toLowerCase())) {
+      if (id && !hiddenIds.has(id.toUpperCase()) && !map.has(id.toLowerCase())) {
         map.set(id.toLowerCase(), {
           id,
           name: (r[3] || '').toString().trim(),
@@ -47,8 +60,9 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
         });
       }
     });
-    return Array.from(map.values());
-  }, [productData, warehouseProductData]);
+
+    return Array.from(map.values()).sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+  }, [productData, warehouseProductData, getHiddenProductIds]);
 
   const [initialSnapshot, setInitialSnapshot] = useState('');
 

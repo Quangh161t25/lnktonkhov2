@@ -49,7 +49,7 @@ const LOAI_HINH_OPTIONS = [
 ];
 
 export function NhapModule() {
-  const { nhapData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, loadingModules } = useData();
+  const { nhapData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, fetchUsersData, loadingModules } = useData();
   const { currentUser, hasActionPermission, canAccessWarehouse } = useAuth();
   const { getWarehouseOptions, getAllSystemWarehouses } = useSettings();
 
@@ -75,13 +75,21 @@ export function NhapModule() {
   const [partnerFilter, setPartnerFilter] = useState('');
   const [maSpFilter, setMaSpFilter] = useState('');
 
-  // Always fetch latest nhap data on mount
+  // Always fetch latest data on mount: nhap, sanpham, sanphamkho, and usersData (for suggestions)
   React.useEffect(() => {
     fetchModule('nhap');
-  }, [fetchModule]);
+    fetchModule('sanpham');
+    fetchModule('sanphamkho');
+    if (fetchUsersData) fetchUsersData();
+  }, [fetchModule, fetchUsersData]);
 
   const handleRefresh = async () => {
-    await fetchModule('nhap', true);
+    await Promise.all([
+      fetchModule('nhap', true),
+      fetchModule('sanpham', true),
+      fetchModule('sanphamkho', true),
+      fetchUsersData ? fetchUsersData() : Promise.resolve()
+    ]);
   };
 
   const isLoading = Boolean(loadingModules?.nhap);
