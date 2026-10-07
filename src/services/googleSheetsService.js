@@ -119,6 +119,24 @@ export async function fetchAggregates(options = {}) {
   return data;
 }
 
+export async function fetchProductDetail(productId) {
+  const url = `/api/sheets?action=product_detail&productId=${encodeURIComponent(productId || '')}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' }
+  });
+
+  if (!response.ok) {
+    const rawError = await response.json().catch(() => ({}));
+    const errorData = await decryptPayload(rawError);
+    throw new Error(errorData.error || `Failed to fetch product detail: HTTP ${response.status}`);
+  }
+
+  const raw = await response.json();
+  const data = await decryptPayload(raw);
+  return data;
+}
+
 export async function updateSheetRange(sheetName, range, values, valueInputOption = "USER_ENTERED") {
   const response = await fetch('/api/sheets?action=update', {
     method: 'POST',

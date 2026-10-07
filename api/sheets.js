@@ -227,6 +227,31 @@ let cachedAggregatesResult = null;
 let cachedAggregatesTime = 0;
 const AGGREGATES_CACHE_TTL = 15000; // 15 seconds memory cache
 
+let cachedRawSheets = null;
+let cachedRawSheetsTime = 0;
+const RAW_SHEETS_CACHE_TTL = 30000; // 30 seconds memory cache
+
+async function getRawOrderSheets(force = false) {
+  const now = Date.now();
+  if (!force && cachedRawSheets && (now - cachedRawSheetsTime < RAW_SHEETS_CACHE_TTL)) {
+    return cachedRawSheets;
+  }
+  const [spKhoRes, nhapRes, xuatRes, transferRes] = await Promise.all([
+    callSheetFetch('DS_SP_KHO', 'A1:F50000').catch(() => []),
+    callSheetFetch('NHAP_CT', 'A1:Q60000').catch(() => []),
+    callSheetFetch('XUAT_CT', 'A1:O60000').catch(() => []),
+    callSheetFetch('CHUYEN_KHO_CT', 'A1:K60000').catch(() => [])
+  ]);
+  const spRows = Array.isArray(spKhoRes) ? spKhoRes : (spKhoRes?.values || []);
+  const nhapRows = Array.isArray(nhapRes) ? nhapRes : (nhapRes?.values || []);
+  const xuatRows = Array.isArray(xuatRes) ? xuatRes : (xuatRes?.values || []);
+  const transferRows = Array.isArray(transferRes) ? transferRes : (transferRes?.values || []);
+
+  cachedRawSheets = { spRows, nhapRows, xuatRows, transferRows };
+  cachedRawSheetsTime = now;
+  return cachedRawSheets;
+}
+
 function encryptPayload(dataObj) {
   try {
     const iv = crypto.randomBytes(12);
@@ -505,18 +530,10 @@ export default async function handler(req, res) {
       if (!force && cachedAggregatesResult && (now - cachedAggregatesTime < AGGREGATES_CACHE_TTL)) {
         rawAggregates = cachedAggregatesResult;
       } else {
-        const [spKhoRes, nhapRes, xuatRes] = await Promise.all([
-          callSheetFetch('DS_SP_KHO', 'A1:F50000').catch(() => []),
-          callSheetFetch('NHAP_CT', 'A1:Q60000').catch(() => []),
-          callSheetFetch('XUAT_CT', 'A1:O60000').catch(() => [])
-        ]);
+        const { spRows, nhapRows, xuatRows } = await getRawOrderSheets(force);
 
         const aggregatesMap = {};
         const nppExportMap = {};
-
-        const spRows = Array.isArray(spKhoRes) ? spKhoRes : (spKhoRes?.values || []);
-        const nhapRows = Array.isArray(nhapRes) ? nhapRes : (nhapRes?.values || []);
-        const xuatRows = Array.isArray(xuatRes) ? xuatRes : (xuatRes?.values || []);
 
         const findCol = (rows, candidates, fallback) => {
           if (!rows || rows.length === 0) return fallback;
@@ -610,6 +627,182 @@ export default async function handler(req, res) {
         success: true,
         aggregates: rawAggregates.aggregatesMap,
         nppProductIds
+      }));
+    }
+
+    // 2.5 PRODUCT DETAIL (Stock by warehouse & Chronological transactions with running balance)
+    if (action === 'product_detail') {
+      const rawProductId = req.query?.productId || url.searchParams.get('productId') || (body && body.productId) || '';
+      const targetId = cleanString(rawProductId).toLowerCase();
+
+      if (!targetId) {
+        return res.status(400).json({ success: false, error: 'Thiếu mã sản phẩm (productId).' });
+      }
+
+      const { spRows, nhapRows, xuatRows, transferRows } = await getRawOrderSheets(false);
+
+      const findCol = (rows, candidates, fallback) => {
+        if (!rows || rows.length === 0) return fallback;
+        const headers = (rows[0] || []).map(h => (h || '').toString().trim().toLowerCase());
+        for (const c of candidates) {
+          const idx = headers.findIndex(h => h.includes(c));
+          if (idx !== -1) return idx;
+        }
+        return fallback;
+      };
+
+      const iSpKhoId = findCol(spRows, ['id_sp', 'ma_sp'], 2);
+      const iSpKhoTonDau = findCol(spRows, ['ton_dau'], 4);
+      const iSpKhoName = findCol(spRows, ['kho'], 1);
+
+      const iNhapSpId = findCol(nhapRows, ['id_sp', 'ma_sp'], 6);
+      const iNhapSlg = findCol(nhapRows, ['slg', 'so_luong'], 8);
+      const iNhapKho = findCol(nhapRows, ['kho'], 11);
+
+      const iXuatSpId = findCol(xuatRows, ['id_sp', 'ma_sp'], 6);
+      const iXuatSlg = findCol(xuatRows, ['slg', 'so_luong'], 8);
+      const iXuatKho = findCol(xuatRows, ['kho'], 11);
+
+      const iTransferSpId = findCol(transferRows, ['id_sp', 'ma_sp'], 3);
+      const iTransferSlg = findCol(transferRows, ['slg', 'so_luong'], 5);
+      const iTransferKhoDi = findCol(transferRows, ['kho_di'], 6);
+      const iTransferKhoNhan = findCol(transferRows, ['kho_nhan'], 7);
+
+      // Default warehouses
+      const whMap = {};
+      ['KHO 1', 'KHO 2', 'KHO 3', 'KHO 4', 'KHO 5'].forEach(w => {
+        whMap[w] = { kho: w, tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 };
+      });
+
+      // 1. Baseline tonDau from DS_SP_KHO
+      spRows.slice(1).forEach(row => {
+        const idSp = (row[iSpKhoId] || '').toString().trim().toLowerCase();
+        if (idSp === targetId) {
+          const kho = (row[iSpKhoName] || '').toString().trim().toUpperCase();
+          if (kho) {
+            if (!whMap[kho]) whMap[kho] = { kho, tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 };
+            whMap[kho].tonDau += cleanNumber(row[iSpKhoTonDau]);
+          }
+        }
+      });
+
+      const transactions = [];
+
+      // 2. Nhap from NHAP_CT
+      nhapRows.slice(1).forEach((row, idx) => {
+        const idSp = (row[iNhapSpId] || '').toString().trim().toLowerCase();
+        if (idSp === targetId) {
+          const kho = (row[iNhapKho] || '').toString().trim().toUpperCase();
+          const slg = cleanNumber(row[iNhapSlg]);
+          if (kho) {
+            if (!whMap[kho]) whMap[kho] = { kho, tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 };
+            whMap[kho].nhap += slg;
+          }
+          transactions.push({
+            id: `NHAP_${row[0] || idx}`,
+            date: row[1] || '',
+            type: 'NHẬP',
+            delta: slg,
+            slg,
+            mdh: (row[3] || '').toString().trim(),
+            partnerCode: (row[4] || '').toString().trim(),
+            partnerName: (row[5] || '').toString().trim(),
+            kho: kho || 'KHO 1',
+            donGia: cleanNumber(row[9]),
+            thanhTien: cleanNumber(row[10]),
+            user: row[12] || '',
+            note: row[13] || '',
+            loaiHinh: row[14] || 'Thường'
+          });
+        }
+      });
+
+      // 3. Xuat from XUAT_CT
+      xuatRows.slice(1).forEach((row, idx) => {
+        const idSp = (row[iXuatSpId] || '').toString().trim().toLowerCase();
+        if (idSp === targetId) {
+          const kho = (row[iXuatKho] || '').toString().trim().toUpperCase();
+          const slg = cleanNumber(row[iXuatSlg]);
+          if (kho) {
+            if (!whMap[kho]) whMap[kho] = { kho, tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 };
+            whMap[kho].xuat += slg;
+          }
+          transactions.push({
+            id: `XUAT_${row[0] || idx}`,
+            date: row[1] || '',
+            type: 'XUẤT',
+            delta: -slg,
+            slg,
+            mdh: (row[3] || '').toString().trim(),
+            partnerCode: (row[4] || '').toString().trim(),
+            partnerName: (row[5] || '').toString().trim(),
+            kho: kho || 'KHO 1',
+            donGia: cleanNumber(row[9]),
+            thanhTien: cleanNumber(row[10]),
+            user: row[12] || '',
+            note: row[13] || '',
+            loaiHinh: row[14] || 'Thường'
+          });
+        }
+      });
+
+      // 4. Chuyen kho from CHUYEN_KHO_CT
+      transferRows.slice(1).forEach((row, idx) => {
+        const idSp = (row[iTransferSpId] || '').toString().trim().toLowerCase();
+        if (idSp === targetId) {
+          const khoDi = (row[iTransferKhoDi] || '').toString().trim().toUpperCase();
+          const khoNhan = (row[iTransferKhoNhan] || '').toString().trim().toUpperCase();
+          const slg = cleanNumber(row[iTransferSlg]);
+          if (khoDi) {
+            if (!whMap[khoDi]) whMap[khoDi] = { kho: khoDi, tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 };
+            whMap[khoDi].chuyenDi += slg;
+          }
+          if (khoNhan) {
+            if (!whMap[khoNhan]) whMap[khoNhan] = { kho: khoNhan, tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 };
+            whMap[khoNhan].chuyenDen += slg;
+          }
+          transactions.push({
+            id: `TRANSFER_${row[0] || idx}`,
+            date: row[1] || '',
+            type: 'CHUYỂN KHO',
+            delta: 0,
+            slg,
+            mdh: (row[2] || '').toString().trim(),
+            partnerCode: '',
+            partnerName: `Chuyển kho: ${khoDi} ➔ ${khoNhan}`,
+            kho: `${khoDi} ➔ ${khoNhan}`,
+            transferFrom: khoDi,
+            transferTo: khoNhan,
+            donGia: 0,
+            thanhTien: 0,
+            user: '',
+            note: row[8] || '',
+            loaiHinh: row[9] || 'Điều chuyển'
+          });
+        }
+      });
+
+      // Compute tonCuoi for each kho
+      const warehouseBreakdown = Object.values(whMap).map(w => ({
+        ...w,
+        tonCuoi: w.tonDau + w.nhap - w.xuat + w.chuyenDen - w.chuyenDi
+      })).sort((a, b) => a.kho.localeCompare(b.kho));
+
+      const totals = warehouseBreakdown.reduce((acc, curr) => ({
+        tonDau: acc.tonDau + curr.tonDau,
+        nhap: acc.nhap + curr.nhap,
+        xuat: acc.xuat + curr.xuat,
+        chuyenDen: acc.chuyenDen + curr.chuyenDen,
+        chuyenDi: acc.chuyenDi + curr.chuyenDi,
+        tonCuoi: acc.tonCuoi + curr.tonCuoi
+      }), { tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 });
+
+      return res.status(200).json(encryptPayload({
+        success: true,
+        productId: rawProductId,
+        warehouseBreakdown,
+        transactions,
+        totals
       }));
     }
 

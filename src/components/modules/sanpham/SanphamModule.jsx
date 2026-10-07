@@ -663,6 +663,7 @@ export function SanphamModule({ onNavigateWithFilter }) {
         isOpen={Boolean(detailProductRow)}
         onClose={() => setDetailProductRow(null)}
         productRow={detailProductRow}
+        initialAggregates={detailProductRow ? aggregates.get((detailProductRow[0] || '').toString().trim().toLowerCase()) : null}
       />
     </div>
   );

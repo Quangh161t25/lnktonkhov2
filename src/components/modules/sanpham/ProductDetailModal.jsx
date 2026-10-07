@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../common/Modal';
 import { useData } from '../../../context/DataContext';
 import { useSettings } from '../../../context/SettingsContext';
+import { fetchProductDetail } from '../../../services/googleSheetsService';
 import { 
   formatNumber, 
   formatCurrency, 
@@ -29,7 +30,8 @@ import {
 export function ProductDetailModal({
   isOpen,
   onClose,
-  productRow
+  productRow,
+  initialAggregates = null
 }) {
   const { 
     nhapData, 
@@ -47,6 +49,7 @@ export function ProductDetailModal({
   const [dateTo, setDateTo] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [serverDetail, setServerDetail] = useState(null);
 
   // Extract Product Info
   const productId = (productRow?.[0] || '').toString().trim();
@@ -56,11 +59,28 @@ export function ProductDetailModal({
   const productPrice = cleanNumber(productRow?.[4]);
   const productNote = (productRow?.[5] || '').toString().trim();
 
-  // Lazy-load detailed order sheets if not already populated
+  // Load product detail directly from backend API for speed and zero quota errors
   useEffect(() => {
     if (isOpen && productId) {
+      let isMounted = true;
+      setIsLoadingDetails(true);
+
+      // 1. Fetch server detail (fast, cached, includes all warehouses and full history)
+      fetchProductDetail(productId)
+        .then(data => {
+          if (isMounted && data && data.success) {
+            setServerDetail(data);
+          }
+        })
+        .catch(err => {
+          console.warn('fetchProductDetail server error, falling back to local sheets:', err);
+        })
+        .finally(() => {
+          if (isMounted) setIsLoadingDetails(false);
+        });
+
+      // 2. Also ensure local modules are fetched if missing
       const loadSheets = async () => {
-        setIsLoadingDetails(true);
         try {
           const promises = [];
           if (!nhapData || nhapData.length <= 1) promises.push(fetchModule('nhap'));
@@ -71,12 +91,16 @@ export function ProductDetailModal({
             await Promise.all(promises);
           }
         } catch (err) {
-          console.warn('Error loading detail sheets:', err);
-        } finally {
-          setIsLoadingDetails(false);
+          console.warn('Error loading detail sheets locally:', err);
         }
       };
       loadSheets();
+
+      return () => {
+        isMounted = false;
+      };
+    } else {
+      setServerDetail(null);
     }
   }, [isOpen, productId, nhapData, xuatData, transferData, warehouseProductData, fetchModule]);
 
@@ -86,6 +110,10 @@ export function ProductDetailModal({
   // 1. Calculate Warehouse Breakdown
   const warehouseBreakdown = useMemo(() => {
     if (!cleanId) return [];
+
+    if (serverDetail?.warehouseBreakdown && serverDetail.warehouseBreakdown.length > 0) {
+      return serverDetail.warehouseBreakdown;
+    }
 
     const baseWarehouses = getAllSystemWarehouses() || [];
     const whMap = new Map();
@@ -168,11 +196,15 @@ export function ProductDetailModal({
     });
 
     return list.sort((a, b) => a.kho.localeCompare(b.kho));
-  }, [cleanId, getAllSystemWarehouses, warehouseProductData, nhapData, xuatData, transferData]);
+  }, [cleanId, serverDetail, getAllSystemWarehouses, warehouseProductData, nhapData, xuatData, transferData]);
 
-  // Overall totals across all warehouses
+  // Overall totals across all warehouses (prioritize server data, then initialAggregates, then computed)
   const overallTotals = useMemo(() => {
-    return warehouseBreakdown.reduce((acc, curr) => ({
+    if (serverDetail?.totals) {
+      return serverDetail.totals;
+    }
+
+    const computed = warehouseBreakdown.reduce((acc, curr) => ({
       tonDau: acc.tonDau + curr.tonDau,
       nhap: acc.nhap + curr.nhap,
       xuat: acc.xuat + curr.xuat,
@@ -180,11 +212,30 @@ export function ProductDetailModal({
       chuyenDi: acc.chuyenDi + curr.chuyenDi,
       tonCuoi: acc.tonCuoi + curr.tonCuoi
     }), { tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 });
-  }, [warehouseBreakdown]);
+
+    if (initialAggregates) {
+      return {
+        tonDau: computed.tonDau > 0 ? computed.tonDau : (initialAggregates.tonDau || 0),
+        nhap: computed.nhap > 0 ? computed.nhap : (initialAggregates.tongNhap || 0),
+        xuat: computed.xuat > 0 ? computed.xuat : (initialAggregates.tongXuat || 0),
+        chuyenDen: computed.chuyenDen,
+        chuyenDi: computed.chuyenDi,
+        tonCuoi: (computed.tonCuoi !== 0 && computed.tonCuoi !== -computed.xuat) 
+          ? computed.tonCuoi 
+          : (initialAggregates.tonCuoi || 0)
+      };
+    }
+
+    return computed;
+  }, [serverDetail, warehouseBreakdown, initialAggregates]);
 
   // 2. Chronological Daily Transactions (Nhập & Xuất theo ngày từng kho)
   const allTransactions = useMemo(() => {
     if (!cleanId) return [];
+
+    if (serverDetail?.transactions && serverDetail.transactions.length > 0) {
+      return serverDetail.transactions;
+    }
 
     const list = [];
 
@@ -258,20 +309,22 @@ export function ProductDetailModal({
       }
     });
 
-    // Sort descending by date
-    return list.sort((a, b) => {
-      const dateA = parseSimpleSheetDate(a.date);
-      const dateB = parseSimpleSheetDate(b.date);
-      const timeA = Number.isNaN(dateA.getTime()) ? 0 : dateA.getTime();
-      const timeB = Number.isNaN(dateB.getTime()) ? 0 : dateB.getTime();
-      return timeB - timeA;
-    });
-  }, [cleanId, nhapData, xuatData, transferData]);
+    return list;
+  }, [cleanId, serverDetail, nhapData, xuatData, transferData]);
 
-  // Filtered transactions
-  const filteredTransactions = useMemo(() => {
-    return allTransactions.filter(item => {
-      // Kho filter
+  // 3. Calculate Running Balance ("Số lượng còn lại mỗi khi nhập xuất")
+  const transactionsWithBalance = useMemo(() => {
+    if (!allTransactions || allTransactions.length === 0) return [];
+
+    // Baseline Ton Dau based on selected warehouse
+    let baselineTonDau = overallTotals.tonDau;
+    if (selectedKho !== 'ALL') {
+      const matchWh = warehouseBreakdown.find(w => w.kho.toUpperCase() === selectedKho.toUpperCase());
+      baselineTonDau = matchWh ? matchWh.tonDau : 0;
+    }
+
+    // Scoped list matching the warehouse filter
+    const scopedList = allTransactions.filter(item => {
       if (selectedKho !== 'ALL') {
         const targetK = selectedKho.toUpperCase();
         if (item.type === 'CHUYỂN KHO') {
@@ -280,7 +333,52 @@ export function ProductDetailModal({
           return false;
         }
       }
+      return true;
+    });
 
+    // Sort chronologically ascending (oldest first) to compute running balance
+    const sortedAsc = [...scopedList].sort((a, b) => {
+      const dateA = parseSimpleSheetDate(a.date);
+      const dateB = parseSimpleSheetDate(b.date);
+      const timeA = Number.isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+      const timeB = Number.isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+      return timeA - timeB;
+    });
+
+    // Compute running balance after each transaction
+    let currentBalance = baselineTonDau;
+    sortedAsc.forEach(tx => {
+      let delta = 0;
+      if (tx.type === 'NHẬP') {
+        delta = tx.slg;
+      } else if (tx.type === 'XUẤT') {
+        delta = -tx.slg;
+      } else if (tx.type === 'CHUYỂN KHO') {
+        if (selectedKho !== 'ALL') {
+          const targetK = selectedKho.toUpperCase();
+          if (tx.transferTo === targetK) delta = tx.slg;
+          else if (tx.transferFrom === targetK) delta = -tx.slg;
+        } else {
+          delta = 0;
+        }
+      }
+      currentBalance += delta;
+      tx.balanceAfter = currentBalance;
+    });
+
+    // Return sorted descending (newest first for standard display)
+    return sortedAsc.sort((a, b) => {
+      const dateA = parseSimpleSheetDate(a.date);
+      const dateB = parseSimpleSheetDate(b.date);
+      const timeA = Number.isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+      const timeB = Number.isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+      return timeB - timeA;
+    });
+  }, [allTransactions, selectedKho, overallTotals.tonDau, warehouseBreakdown]);
+
+  // Filtered transactions for view (applying Type, Date range, Search)
+  const filteredTransactions = useMemo(() => {
+    return transactionsWithBalance.filter(item => {
       // Type filter
       if (selectedType !== 'ALL' && item.type !== selectedType) {
         return false;
@@ -309,7 +407,7 @@ export function ProductDetailModal({
 
       return true;
     });
-  }, [allTransactions, selectedKho, selectedType, dateFrom, dateTo, searchTerm]);
+  }, [transactionsWithBalance, selectedType, dateFrom, dateTo, searchTerm]);
 
   // Total summary of filtered transactions
   const filteredTransSummary = useMemo(() => {
@@ -665,18 +763,19 @@ export function ProductDetailModal({
                     <th className="py-2.5 px-3 w-28">Ngày</th>
                     <th className="py-2.5 px-3 w-24">Loại</th>
                     <th className="py-2.5 px-3 w-28">Mã đơn</th>
-                    <th className="py-2.5 px-3 w-28">Kho</th>
+                    <th className="py-2.5 px-3 w-24">Kho</th>
                     <th className="py-2.5 px-3">Đối tác / Giao dịch</th>
                     <th className="py-2.5 px-3 text-right w-24">Số lượng</th>
-                    <th className="py-2.5 px-3 text-right w-28">Đơn giá</th>
-                    <th className="py-2.5 px-3 text-right w-28">Thành tiền</th>
+                    <th className="py-2.5 px-3 text-right w-28 font-black text-slate-800 bg-slate-100/70">Số lượng còn lại</th>
+                    <th className="py-2.5 px-3 text-right w-24">Đơn giá</th>
+                    <th className="py-2.5 px-3 text-right w-24">Thành tiền</th>
                     <th className="py-2.5 px-3">Ghi chú</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-normal">
                   {filteredTransactions.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-10 text-center text-slate-400 italic">
+                      <td colSpan={10} className="py-10 text-center text-slate-400 italic">
                         Không có giao dịch Nhập/Xuất nào cho sản phẩm này theo bộ lọc đã chọn.
                       </td>
                     </tr>
@@ -721,7 +820,7 @@ export function ProductDetailModal({
 
                           {/* Đối tác */}
                           <td className="py-2 px-3 text-slate-700">
-                            <div className="truncate max-w-[200px]" title={tx.partnerName || tx.partnerCode}>
+                            <div className="truncate max-w-[180px]" title={tx.partnerName || tx.partnerCode}>
                               {tx.partnerName || tx.partnerCode || '-'}
                             </div>
                           </td>
@@ -734,6 +833,17 @@ export function ProductDetailModal({
                               'text-purple-600'
                             }`}>
                               {isNhap ? `+${formatNumber(tx.slg)}` : isXuat ? `-${formatNumber(tx.slg)}` : formatNumber(tx.slg)}
+                            </span>
+                          </td>
+
+                          {/* Số lượng còn lại sau giao dịch */}
+                          <td className="py-2 px-3 text-right whitespace-nowrap bg-slate-50/50">
+                            <span className={`font-black font-mono text-xs px-2 py-0.5 rounded border ${
+                              (tx.balanceAfter ?? 0) <= 0 
+                                ? 'bg-red-50 text-red-600 border-red-200' 
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                              {formatNumber(tx.balanceAfter)}
                             </span>
                           </td>
 
