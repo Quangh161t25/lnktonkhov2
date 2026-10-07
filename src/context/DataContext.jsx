@@ -208,13 +208,35 @@ export function DataProvider({ children }) {
       try {
         const res = await fetchAggregates({ force, nppId, nppName });
         if (res && res.aggregates) {
-          setAggregatesData(res.aggregates);
-          setLocalItem('lnk_aggregates_cache', res.aggregates);
+          const prevAggs = aggregatesDataRef.current || {};
+          const mergedAggregates = { ...res.aggregates };
+
+          // Sanity check: Calculate total tonDau in previous vs new aggregates
+          let prevTotalTonDau = 0;
+          let newTotalTonDau = 0;
+          Object.values(prevAggs).forEach(v => { prevTotalTonDau += (Number(v?.tonDau) || 0); });
+          Object.values(mergedAggregates).forEach(v => { newTotalTonDau += (Number(v?.tonDau) || 0); });
+
+          // If previously we had valid tonDau (> 0) but incoming payload has significantly lost tonDau,
+          // preserve the known valid tonDau for each product!
+          if (prevTotalTonDau > 0 && newTotalTonDau < prevTotalTonDau * 0.5) {
+            console.warn('[DataContext] Incoming aggregates lost tonDau, preserving cached tonDau');
+            Object.keys(prevAggs).forEach(id => {
+              const prevItem = prevAggs[id];
+              if (mergedAggregates[id] && prevItem && prevItem.tonDau > 0 && (mergedAggregates[id].tonDau || 0) === 0) {
+                mergedAggregates[id].tonDau = prevItem.tonDau;
+                mergedAggregates[id].tonCuoi = mergedAggregates[id].tonDau + (mergedAggregates[id].tongNhap || 0) - (mergedAggregates[id].tongXuat || 0);
+              }
+            });
+          }
+
+          setAggregatesData(mergedAggregates);
+          setLocalItem('lnk_aggregates_cache', mergedAggregates);
           if (res.nppProductIds) {
             setNppProductIdsData(res.nppProductIds);
             setLocalItem('lnk_npp_products_cache', res.nppProductIds);
           }
-          return res;
+          return { aggregates: mergedAggregates, nppProductIds: res.nppProductIds };
         }
         return { aggregates: aggregatesDataRef.current, nppProductIds: nppProductIdsDataRef.current };
       } catch (err) {

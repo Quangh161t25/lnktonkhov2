@@ -108,8 +108,30 @@ export function SanphamModule({ onNavigateWithFilter }) {
     if (aggregatesData && Object.keys(aggregatesData).length > 0) {
       const map = new Map();
       Object.entries(aggregatesData).forEach(([k, v]) => {
-        map.set(k.toLowerCase(), v);
+        map.set(k.toLowerCase(), { ...v });
       });
+
+      // Supplementary safeguard: If warehouseProductData is loaded and has tonDau > 0,
+      // prevent transient 0 in aggregatesData from overriding it
+      if (warehouseProductData && warehouseProductData.length > 1) {
+        warehouseProductData.slice(1).forEach(row => {
+          const id = (row[2] || '').toString().trim().toLowerCase();
+          if (!id) return;
+          const whTonDau = cleanNumber(row[4]);
+          if (whTonDau > 0) {
+            if (!map.has(id)) {
+              map.set(id, { tonDau: whTonDau, tongNhap: 0, tongXuat: 0, tonCuoi: whTonDau });
+            } else {
+              const item = map.get(id);
+              if (!item.tonDau || item.tonDau === 0) {
+                item.tonDau = (item.tonDau || 0) + whTonDau;
+                item.tonCuoi = item.tonDau + (item.tongNhap || 0) - (item.tongXuat || 0);
+              }
+            }
+          }
+        });
+      }
+
       return map;
     }
     return calculateProductAggregates(nhapData, xuatData, transferData, warehouseProductData);

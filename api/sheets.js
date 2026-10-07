@@ -87,71 +87,92 @@ function parseRangeInfo(rangeStr) {
   return { startColIndex, endColIndex, startRowNum };
 }
 
-// Google Sheets API Helpers
-async function callSheetFetch(sheetName, range = "A1:Z50000") {
-  const token = await getAccessToken();
+// Google Sheets API Helpers with automatic retry on 429 / network errors
+async function callSheetFetch(sheetName, range = "A1:Z50000", maxRetries = 3) {
   const cleanSheetName = (sheetName || '').replace(/['"]/g, '').split('!')[0].trim().toUpperCase();
   const rawSheetName = (sheetName || '').replace(/['"]/g, '').split('!')[0].trim();
   const cleanRange = (range || "A1:Z50000").replace(/.*!/, '').trim() || "A1:Z50000";
   const encodedRange = encodeURIComponent(`'${rawSheetName}'!${cleanRange}`);
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${DEFAULT_CONFIG.spreadsheetId}/values/${encodedRange}`;
-  
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
 
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`Sheet fetch failed: HTTP ${response.status} - ${errText}`);
-  }
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const token = await getAccessToken();
 
-  const data = await response.json();
-  let values = data.values || [];
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
-  // SECURITY: If DSNV (Employees/Users) is fetched, ALWAYS sanitize passwords from response!
-  // Robust check: normalize sheetName (strip quotes, sub-range syntax, whitespace)
-  if (cleanSheetName === 'DSNV' && values.length > 0) {
-    const { startColIndex, endColIndex, startRowNum } = parseRangeInfo(cleanRange);
-    const firstRowLower = values[0].map(h => (h || '').toString().trim().toLowerCase());
-    const headerKeywords = ['id', 'ho_ten', 'họ tên', 'name', 'password', 'mat_khau', 'mk', 'quyen', 'role', 'truong', 'gioi_tinh', 'ngay_sinh'];
-    const matchCount = firstRowLower.filter(h => headerKeywords.includes(h)).length;
-    // Considered a header row only if at least 2 known schema column names are present
-    const isSingleColHeader = firstRowLower.length === 1 && ['password', 'mat_khau', 'mk'].includes(firstRowLower[0]);
-    const isHeaderRow = matchCount >= 2 ? (startRowNum === 1) : (startRowNum === 1 && isSingleColHeader);
-
-    const passIndices = new Set();
-    if (isHeaderRow) {
-      firstRowLower.forEach((h, i) => {
-        if (h === 'password' || h === 'mat_khau' || h === 'mk' || h.includes('pass') || h.includes('mật khẩu')) {
-          passIndices.add(i);
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        if ((response.status === 429 || response.status >= 500) && attempt <= maxRetries) {
+          const delay = attempt * 1500;
+          console.warn(`[callSheetFetch] HTTP ${response.status} for ${sheetName}, retrying attempt ${attempt} in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
         }
-      });
-    }
-
-    // In DSNV schema, column 6 (Col G) is password
-    // If queried range includes Col G, calculate its relative index in the returned rows
-    const colGInRange = (startColIndex <= 6 && 6 <= endColIndex);
-    if (colGInRange) {
-      const relColGIndex = 6 - startColIndex;
-      if (relColGIndex >= 0) {
-        passIndices.add(relColGIndex);
+        throw new Error(`Sheet fetch failed: HTTP ${response.status} - ${errText}`);
       }
-    }
-    if (startColIndex === 0 && endColIndex >= 6) {
-      passIndices.add(6);
-    }
 
-    values = values.map((row, rIdx) => {
-      if (rIdx === 0 && isHeaderRow) return row;
-      const copy = [...row];
-      passIndices.forEach(idx => {
-        if (copy[idx] !== undefined) copy[idx] = '***'; // Mask password
-      });
-      return copy;
-    });
+      const data = await response.json();
+      let values = data.values || [];
+
+      // SECURITY: If DSNV (Employees/Users) is fetched, ALWAYS sanitize passwords from response!
+      // Robust check: normalize sheetName (strip quotes, sub-range syntax, whitespace)
+      if (cleanSheetName === 'DSNV' && values.length > 0) {
+        const { startColIndex, endColIndex, startRowNum } = parseRangeInfo(cleanRange);
+        const firstRowLower = values[0].map(h => (h || '').toString().trim().toLowerCase());
+        const headerKeywords = ['id', 'ho_ten', 'họ tên', 'name', 'password', 'mat_khau', 'mk', 'quyen', 'role', 'truong', 'gioi_tinh', 'ngay_sinh'];
+        const matchCount = firstRowLower.filter(h => headerKeywords.includes(h)).length;
+        // Considered a header row only if at least 2 known schema column names are present
+        const isSingleColHeader = firstRowLower.length === 1 && ['password', 'mat_khau', 'mk'].includes(firstRowLower[0]);
+        const isHeaderRow = matchCount >= 2 ? (startRowNum === 1) : (startRowNum === 1 && isSingleColHeader);
+
+        const passIndices = new Set();
+        if (isHeaderRow) {
+          firstRowLower.forEach((h, i) => {
+            if (h === 'password' || h === 'mat_khau' || h === 'mk' || h.includes('pass') || h.includes('mật khẩu')) {
+              passIndices.add(i);
+            }
+          });
+        }
+
+        // In DSNV schema, column 6 (Col G) is password
+        // If queried range includes Col G, calculate its relative index in the returned rows
+        const colGInRange = (startColIndex <= 6 && 6 <= endColIndex);
+        if (colGInRange) {
+          const relColGIndex = 6 - startColIndex;
+          if (relColGIndex >= 0) {
+            passIndices.add(relColGIndex);
+          }
+        }
+        if (startColIndex === 0 && endColIndex >= 6) {
+          passIndices.add(6);
+        }
+
+        values = values.map((row, rIdx) => {
+          if (rIdx === 0 && isHeaderRow) return row;
+          const copy = [...row];
+          passIndices.forEach(idx => {
+            if (copy[idx] !== undefined) copy[idx] = '***'; // Mask password
+          });
+          return copy;
+        });
+      }
+
+      return values;
+    } catch (err) {
+      if (attempt <= maxRetries && (err.message.includes('429') || err.message.includes('fetch failed') || err.message.includes('ECONNRESET'))) {
+        const delay = attempt * 1500;
+        console.warn(`[callSheetFetch] Retry attempt ${attempt} for ${sheetName} in ${delay}ms: ${err.message}`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
   }
-
-  return values;
 }
 
 async function callSheetUpdate(sheetName, range, values, valueInputOption = "USER_ENTERED") {
@@ -225,11 +246,14 @@ async function callSheetClear(sheetName, range) {
 const ENCRYPTION_SECRET = process.env.PAYLOAD_SECRET || "lnk-secure-payload-encryption-v2-key-2026";
 let cachedAggregatesResult = null;
 let cachedAggregatesTime = 0;
-const AGGREGATES_CACHE_TTL = 15000; // 15 seconds memory cache
+const AGGREGATES_CACHE_TTL = 30000; // 30 seconds memory cache
 
 let cachedRawSheets = null;
 let cachedRawSheetsTime = 0;
-const RAW_SHEETS_CACHE_TTL = 120000; // 2 minutes memory cache
+const RAW_SHEETS_CACHE_TTL = 180000; // 3 minutes memory cache
+
+// Persistent beginning inventory cache (DS_SP_KHO) to guarantee tonDau is never wiped to 0
+let cachedSpKhoRows = null;
 
 async function getRawOrderSheets(force = false) {
   const now = Date.now();
@@ -238,16 +262,33 @@ async function getRawOrderSheets(force = false) {
   }
   try {
     const [spKhoRes, nhapRes, xuatRes, transferRes] = await Promise.all([
-      callSheetFetch('DS_SP_KHO', 'A1:F50000').catch(err => { console.warn('Fetch DS_SP_KHO:', err.message); return null; }),
+      callSheetFetch('DS_SP_KHO', 'A1:F10000').catch(err => { console.warn('Fetch DS_SP_KHO:', err.message); return null; }),
       callSheetFetch('NHAP_CT', 'A1:Q60000').catch(err => { console.warn('Fetch NHAP_CT:', err.message); return null; }),
       callSheetFetch('XUAT_CT', 'A1:O60000').catch(err => { console.warn('Fetch XUAT_CT:', err.message); return null; }),
       callSheetFetch('CHUYEN_KHO_CT', 'A1:K60000').catch(err => { console.warn('Fetch CHUYEN_KHO_CT:', err.message); return null; })
     ]);
 
-    const spRows = Array.isArray(spKhoRes) ? spKhoRes : (cachedRawSheets?.spRows || []);
-    const nhapRows = Array.isArray(nhapRes) ? nhapRes : (cachedRawSheets?.nhapRows || []);
-    const xuatRows = Array.isArray(xuatRes) ? xuatRes : (cachedRawSheets?.xuatRows || []);
-    const transferRows = Array.isArray(transferRes) ? transferRes : (cachedRawSheets?.transferRows || []);
+    // Keep persistent DS_SP_KHO cache whenever successfully loaded
+    if (Array.isArray(spKhoRes) && spKhoRes.length > 1) {
+      cachedSpKhoRows = spKhoRes;
+    }
+
+    // Always fallback to cachedSpKhoRows if new fetch failed or returned empty
+    const spRows = (Array.isArray(spKhoRes) && spKhoRes.length > 1)
+      ? spKhoRes
+      : (cachedSpKhoRows && cachedSpKhoRows.length > 1 ? cachedSpKhoRows : (cachedRawSheets?.spRows || []));
+
+    const nhapRows = (Array.isArray(nhapRes) && nhapRes.length > 0)
+      ? nhapRes
+      : (cachedRawSheets?.nhapRows || []);
+
+    const xuatRows = (Array.isArray(xuatRes) && xuatRes.length > 0)
+      ? xuatRes
+      : (cachedRawSheets?.xuatRows || []);
+
+    const transferRows = (Array.isArray(transferRes) && transferRes.length > 0)
+      ? transferRes
+      : (cachedRawSheets?.transferRows || []);
 
     if (spRows.length > 0 || nhapRows.length > 0 || xuatRows.length > 0 || !cachedRawSheets) {
       cachedRawSheets = { spRows, nhapRows, xuatRows, transferRows };
@@ -574,6 +615,19 @@ export default async function handler(req, res) {
           }
           aggregatesMap[idSp].tonDau += tonDau;
         });
+
+        // Fallback: If spRows was somehow empty on this run, preserve tonDau from previous cache
+        if (spRows.length <= 1 && cachedAggregatesResult?.aggregatesMap) {
+          for (const key in cachedAggregatesResult.aggregatesMap) {
+            const prevItem = cachedAggregatesResult.aggregatesMap[key];
+            if (prevItem && prevItem.tonDau > 0) {
+              if (!aggregatesMap[key]) {
+                aggregatesMap[key] = { tonDau: 0, tongNhap: 0, tongXuat: 0, tonCuoi: 0 };
+              }
+              aggregatesMap[key].tonDau = prevItem.tonDau;
+            }
+          }
+        }
 
         // 2. Nhap from NHAP_CT
         nhapRows.slice(1).forEach(row => {

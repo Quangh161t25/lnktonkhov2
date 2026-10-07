@@ -34,7 +34,7 @@ function getVietnameseFormattedDateTime(date) {
 
 export function Header({ activeModule, onToggleSidebar, onNavigate }) {
   const { currentUser, usersData, switchAdminViewAs, isAdminSession, logout } = useAuth();
-  const { syncStatus, lastSyncedTime, fetchAllData, fetchModule } = useData();
+  const { syncStatus, lastSyncedTime, fetchAllData, fetchModule, fetchAggregatesData } = useData();
   const { appSettings } = useSettings();
 
   const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
@@ -63,13 +63,15 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
     try {
       if (activeModule === 'home') {
         await fetchAllData();
-      } else if (activeModule === 'doisoat' || activeModule === 'sanpham' || activeModule === 'sanphamkho' || activeModule === 'dubaonhap') {
+      } else if (activeModule === 'sanpham' || activeModule === 'doisoat') {
         await Promise.all([
           fetchModule(activeModule, true),
-          fetchModule('sanphamkho', true),
-          fetchModule('nhap', true),
-          fetchModule('xuat', true),
-          fetchModule('chuyenkho', true)
+          fetchAggregatesData ? fetchAggregatesData({ force: true }) : Promise.resolve()
+        ]);
+      } else if (activeModule === 'sanphamkho' || activeModule === 'dubaonhap') {
+        await Promise.all([
+          fetchModule(activeModule, true),
+          fetchModule('sanphamkho', true)
         ]);
       } else {
         await fetchModule(activeModule, true);

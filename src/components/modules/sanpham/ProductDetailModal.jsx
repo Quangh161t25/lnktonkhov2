@@ -68,7 +68,7 @@ export function ProductDetailModal({
       let isMounted = true;
       setIsLoadingDetails(true);
 
-      // 1. Fetch server detail (fast, cached, includes all warehouses and full history)
+      // Fetch server detail (fast, cached, includes all warehouses and full history)
       fetchProductDetail(productId)
         .then(data => {
           if (isMounted && data && data.success) {
@@ -76,28 +76,11 @@ export function ProductDetailModal({
           }
         })
         .catch(err => {
-          console.warn('fetchProductDetail server error, falling back to local sheets:', err);
+          console.warn('fetchProductDetail server error:', err);
         })
         .finally(() => {
           if (isMounted) setIsLoadingDetails(false);
         });
-
-      // 2. Also ensure local modules are fetched if missing
-      const loadSheets = async () => {
-        try {
-          const promises = [];
-          if (!nhapData || nhapData.length <= 1) promises.push(fetchModule('nhap'));
-          if (!xuatData || xuatData.length <= 1) promises.push(fetchModule('xuat'));
-          if (!transferData || transferData.length <= 1) promises.push(fetchModule('chuyenkho'));
-          if (!warehouseProductData || warehouseProductData.length <= 1) promises.push(fetchModule('sanphamkho'));
-          if (promises.length > 0) {
-            await Promise.all(promises);
-          }
-        } catch (err) {
-          console.warn('Error loading detail sheets locally:', err);
-        }
-      };
-      loadSheets();
 
       return () => {
         isMounted = false;
@@ -105,7 +88,7 @@ export function ProductDetailModal({
     } else {
       setServerDetail(null);
     }
-  }, [isOpen, productId, nhapData, xuatData, transferData, warehouseProductData, fetchModule]);
+  }, [isOpen, productId]);
 
   // Normalize product ID for matching
   const cleanId = productId.toLowerCase();
