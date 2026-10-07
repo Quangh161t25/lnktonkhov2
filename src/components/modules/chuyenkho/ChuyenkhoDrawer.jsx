@@ -9,7 +9,7 @@ import { Plus, Trash2 } from 'lucide-react';
 
 export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
   const { getHiddenProductIds } = useAuth();
-  const { getWarehouseOptions } = useSettings();
+  const { getWarehouseOptions, getAllSystemWarehouses } = useSettings();
   const { productData, warehouseProductData, getProductMap, fetchModule } = useData();
 
   const [date, setDate] = useState(formatDateInput(new Date()));
@@ -25,7 +25,18 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
   ]);
 
   const productMap = useMemo(() => getProductMap(), [getProductMap]);
-  const warehouses = useMemo(() => getWarehouseOptions(), [getWarehouseOptions]);
+  // Kho đi: Lấy danh sách kho user được phân quyền quản lý (Admin lấy tất cả)
+  const khoDiOptions = useMemo(() => getWarehouseOptions(false), [getWarehouseOptions]);
+  // Danh mục toàn bộ các kho trong hệ thống
+  const allWarehouses = useMemo(() => {
+    return getAllSystemWarehouses ? getAllSystemWarehouses() : getWarehouseOptions(true);
+  }, [getAllSystemWarehouses, getWarehouseOptions]);
+
+  // Kho nhận: Toàn bộ danh sách kho hệ thống ngoại trừ Kho đi đang chọn
+  const khoNhanOptions = useMemo(() => {
+    const list = allWarehouses.filter(w => w.toString().trim().toUpperCase() !== (khoDi || '').toString().trim().toUpperCase());
+    return list.length > 0 ? list : allWarehouses;
+  }, [allWarehouses, khoDi]);
 
   // Ensure essential suggestion datasets are loaded when drawer opens
   useEffect(() => {
@@ -70,8 +81,10 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
     if (editRow) {
       const loadedDate = formatDateInput(editRow[1]) || formatDateInput(new Date());
       const loadedMdh = editRow[2] || '';
-      const loadedKhoDi = editRow[6] || warehouses[0] || 'KHO 1';
-      const loadedKhoNhan = editRow[7] || warehouses[1] || 'KHO 2';
+      const loadedKhoDi = editRow[6] || khoDiOptions[0] || 'KHO 1';
+      const loadedKhoNhan = (editRow[7] && editRow[7].toString().trim().toUpperCase() !== loadedKhoDi.toString().trim().toUpperCase())
+        ? editRow[7]
+        : (allWarehouses.find(w => w.toString().trim().toUpperCase() !== loadedKhoDi.toString().trim().toUpperCase()) || 'KHO 2');
       const loadedGhiChu = editRow[8] || '';
       const loadedTinhTrang = editRow[9] || 'Tốt';
       const loadedTrangThai = editRow[10] || 'Đang chuyển';
@@ -103,8 +116,9 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
     } else {
       const newDate = formatDateInput(new Date());
       const newMdh = generateRandomOrderId('CK');
-      const newKhoDi = warehouses[0] || 'KHO 1';
-      const newKhoNhan = warehouses[1] || 'KHO 2';
+      const newKhoDi = khoDiOptions[0] || allWarehouses[0] || 'KHO 1';
+      // Kho nhận: chọn kho đầu tiên khác với kho đi trong toàn bộ danh mục kho hệ thống
+      const newKhoNhan = allWarehouses.find(w => w.toString().trim().toUpperCase() !== newKhoDi.toString().trim().toUpperCase()) || (newKhoDi === 'KHO 1' ? 'KHO 2' : 'KHO 1');
       const newItems = [{ idSp: '', tenSp: '', slg: 1 }];
 
       setDate(newDate);
@@ -127,7 +141,23 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
         items: newItems
       }));
     }
-  }, [editRow, isOpen, warehouses]);
+  }, [editRow, isOpen, khoDiOptions, allWarehouses]);
+
+  // Tự động điều chỉnh nếu kho nhận trùng kho đi
+  useEffect(() => {
+    if (khoDi && khoNhan && khoDi.toString().trim().toUpperCase() === khoNhan.toString().trim().toUpperCase()) {
+      const alt = allWarehouses.find(w => w.toString().trim().toUpperCase() !== khoDi.toString().trim().toUpperCase());
+      if (alt) setKhoNhan(alt);
+    }
+  }, [khoDi, khoNhan, allWarehouses]);
+
+  const handleKhoDiChange = (newKhoDi) => {
+    setKhoDi(newKhoDi);
+    if (khoNhan.toString().trim().toUpperCase() === newKhoDi.toString().trim().toUpperCase()) {
+      const alt = allWarehouses.find(w => w.toString().trim().toUpperCase() !== newKhoDi.toString().trim().toUpperCase());
+      if (alt) setKhoNhan(alt);
+    }
+  };
 
   const handleProductSelect = (index, product) => {
     if (!product) return;
@@ -261,10 +291,10 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
             <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Kho đi (Xuất)</label>
             <select
               value={khoDi}
-              onChange={(e) => setKhoDi(e.target.value)}
+              onChange={(e) => handleKhoDiChange(e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-cyan-500 outline-none"
             >
-              {warehouses.map(w => (
+              {khoDiOptions.map(w => (
                 <option key={w} value={w}>{w}</option>
               ))}
             </select>
@@ -277,7 +307,7 @@ export function ChuyenkhoDrawer({ isOpen, onClose, editRow = null, onSaved }) {
               onChange={(e) => setKhoNhan(e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-cyan-500 outline-none"
             >
-              {warehouses.map(w => (
+              {khoNhanOptions.map(w => (
                 <option key={w} value={w}>{w}</option>
               ))}
             </select>

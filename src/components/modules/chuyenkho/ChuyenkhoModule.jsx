@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { useSettings } from '../../../context/SettingsContext';
 import { ChuyenkhoDrawer } from './ChuyenkhoDrawer';
@@ -35,8 +36,9 @@ const DEFAULT_CHUYENKHO_COLUMNS = [
 ];
 
 export function ChuyenkhoModule() {
+  const { canAccessWarehouse } = useAuth();
   const { transferData, appendRow, updateRow, fetchModule, loadingModules } = useData();
-  const { getWarehouseOptions } = useSettings();
+  const { getWarehouseOptions, getAllSystemWarehouses } = useSettings();
 
   // Column Manager Hook
   const {
@@ -76,7 +78,10 @@ export function ChuyenkhoModule() {
 
   const isLoading = Boolean(loadingModules?.chuyenkho);
 
-  const warehouses = getWarehouseOptions();
+  const khoDiList = useMemo(() => getWarehouseOptions(false), [getWarehouseOptions]);
+  const allSystemWarehouses = useMemo(() => {
+    return getAllSystemWarehouses ? getAllSystemWarehouses() : getWarehouseOptions(true);
+  }, [getAllSystemWarehouses, getWarehouseOptions]);
 
   // Filtered rows
   const filteredRows = useMemo(() => {
@@ -89,6 +94,11 @@ export function ChuyenkhoModule() {
     return rawRows.filter(row => {
       const khoDi = (row[6] || '').toString().trim();
       const khoNhan = (row[7] || '').toString().trim();
+
+      // Kiểm tra quyền kho 2 chiều: hiển thị nếu user quản lý Kho đi HOẶC Kho nhận (hoặc Admin xem hết)
+      if (canAccessWarehouse && !canAccessWarehouse(khoDi) && !canAccessWarehouse(khoNhan)) {
+        return false;
+      }
 
       if (khoDiFilter && khoDi.toLowerCase() !== khoDiFilter.toLowerCase()) return false;
       if (khoNhanFilter && khoNhan.toLowerCase() !== khoNhanFilter.toLowerCase()) return false;
@@ -106,7 +116,7 @@ export function ChuyenkhoModule() {
     }).sort((a, b) => {
       return parseSimpleSheetDate(b[1]).getTime() - parseSimpleSheetDate(a[1]).getTime();
     });
-  }, [transferData, khoDiFilter, khoNhanFilter, dateFrom, dateTo, searchTerm]);
+  }, [transferData, canAccessWarehouse, khoDiFilter, khoNhanFilter, dateFrom, dateTo, searchTerm]);
 
   // Paginated rows
   const paginatedRows = useMemo(() => {
@@ -242,7 +252,7 @@ export function ChuyenkhoModule() {
               className="px-2 py-1 border border-slate-200 rounded-md bg-white text-slate-700 font-medium focus:ring-1 focus:ring-cyan-500 outline-none"
             >
               <option value="">Tất cả kho đi</option>
-              {warehouses.map(w => (
+              {khoDiList.map(w => (
                 <option key={w} value={w}>{w}</option>
               ))}
             </select>
@@ -259,7 +269,7 @@ export function ChuyenkhoModule() {
               className="px-2 py-1 border border-slate-200 rounded-md bg-white text-slate-700 font-medium focus:ring-1 focus:ring-cyan-500 outline-none"
             >
               <option value="">Tất cả kho nhận</option>
-              {warehouses.map(w => (
+              {allSystemWarehouses.map(w => (
                 <option key={w} value={w}>{w}</option>
               ))}
             </select>
