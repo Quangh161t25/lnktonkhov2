@@ -283,27 +283,27 @@ export function NhapDrawer({
       setTenKhach(supplierOrVal.name || supplierOrVal.id || '');
       return;
     }
-    const raw = (supplierOrVal || '').toString().trim().normalize('NFC');
-    setTenKhach(raw);
-    if (!raw) {
+    const val = (supplierOrVal || '').toString();
+    setTenKhach(val);
+    const trimmed = val.trim();
+    if (!trimmed) {
       setMaKh('');
       return;
     }
-    const normRaw = removeVietnameseTones(raw.toLowerCase());
+    const normRaw = removeVietnameseTones(trimmed.toLowerCase().normalize('NFC'));
     const found = supplierList.find(s => {
       const sId = (s.id || '').toLowerCase().normalize('NFC');
       const sName = (s.name || '').toLowerCase().normalize('NFC');
       const noToneName = removeVietnameseTones(sName);
       return (
         sId === normRaw ||
-        sName === raw.toLowerCase() ||
+        sName === trimmed.toLowerCase().normalize('NFC') ||
         noToneName === normRaw ||
-        `${sId} - ${sName}` === raw.toLowerCase()
+        `${sId} - ${sName}` === trimmed.toLowerCase().normalize('NFC')
       );
     });
     if (found) {
       setMaKh(found.id);
-      setTenKhach(found.name);
     }
   };
 

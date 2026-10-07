@@ -354,27 +354,27 @@ export function LenDonDrawer({
       setTenKhach(customerOrVal.name || customerOrVal.id || '');
       return;
     }
-    const raw = (customerOrVal || '').toString().trim().normalize('NFC');
-    setTenKhach(raw);
-    if (!raw) {
+    const val = (customerOrVal || '').toString();
+    setTenKhach(val);
+    const trimmed = val.trim();
+    if (!trimmed) {
       setMaKh('');
       return;
     }
-    const normRaw = removeVietnameseTones(raw.toLowerCase());
+    const normRaw = removeVietnameseTones(trimmed.toLowerCase().normalize('NFC'));
     const found = customerList.find(c => {
       const cId = (c.id || '').toLowerCase().normalize('NFC');
       const cName = (c.name || '').toLowerCase().normalize('NFC');
       const noToneName = removeVietnameseTones(cName);
       return (
         cId === normRaw ||
-        cName === raw.toLowerCase() ||
+        cName === trimmed.toLowerCase().normalize('NFC') ||
         noToneName === normRaw ||
-        `${cId} - ${cName}` === raw.toLowerCase()
+        `${cId} - ${cName}` === trimmed.toLowerCase().normalize('NFC')
       );
     });
     if (found) {
       setMaKh(found.id);
-      setTenKhach(found.name);
     }
   };
 
