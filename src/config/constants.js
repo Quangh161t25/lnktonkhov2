@@ -76,6 +76,7 @@ export const MODULE_DEFINITIONS = [
 ];
 
 export const AVAILABLE_ACTIONS = [
+  { key: 'sanpham.viewDetail', name: 'Xem chi tiết tồn 5 kho & nhật ký', desc: 'Cho phép mở xem chi tiết tồn kho từng kho và lịch sử nhập xuất lũy kế' },
   { key: 'nx.manualAdd', name: 'Thêm thủ công đơn Nhập / Xuất', desc: 'Cho phép tạo mới dòng phiếu nhập xuất bằng tay' },
   { key: 'nx.upload', name: 'Tải lên dữ liệu Excel', desc: 'Cho phép upload file Excel nhập/xuất/trả lại' },
   { key: 'nx.confirmWarehouse', name: 'Xác nhận trạng thái kho', desc: 'Cập nhật trạng thái: Đã nhặt hàng, Đã lên xe, Hoàn thành' },

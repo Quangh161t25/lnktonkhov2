@@ -12,6 +12,7 @@ export function parseCaiDatRows(rows) {
 
   const settings = {};
   const roles = {};
+  const userPermissions = {};
   const userRestrictions = {};
   const userWarehouses = {};
   const dataScopes = {};
@@ -74,6 +75,20 @@ export function parseCaiDatRows(rows) {
       roles[roleKey].actions = Array.from(new Set([...roles[roleKey].actions, ...acts]));
     }
 
+    // User-specific Permissions overrides
+    else if (id.startsWith('USER_PERM_') && id.endsWith('_MODULES')) {
+      const userId = id.substring(10, id.length - 8);
+      if (!userPermissions[userId]) userPermissions[userId] = { modules: [], actions: [] };
+      const mods = Array.isArray(parsedVal) ? parsedVal : (value ? value.split(',').map(s => s.trim()) : []);
+      userPermissions[userId].modules = mods;
+    }
+    else if (id.startsWith('USER_PERM_') && id.endsWith('_ACTIONS')) {
+      const userId = id.substring(10, id.length - 8);
+      if (!userPermissions[userId]) userPermissions[userId] = { modules: [], actions: [] };
+      const acts = Array.isArray(parsedVal) ? parsedVal : (value ? value.split(',').map(s => s.trim()) : []);
+      userPermissions[userId].actions = acts;
+    }
+
     // User Warehouse assignments (e.g., USER_KHO_dự)
     else if (id.startsWith('USER_KHO_')) {
       const userId = id.substring(9);
@@ -110,6 +125,7 @@ export function parseCaiDatRows(rows) {
     settings,
     permissions: {
       roles,
+      userPermissions,
       userRestrictions,
       userWarehouses,
       dataScopes
@@ -217,6 +233,34 @@ export function buildCaiDatRows({ settings, permissions, currentUser, rawAdditio
         "PHAN_QUYEN_KHO",
         "list",
         `Danh sách các kho phụ trách của tài khoản ${u}`,
+        dateStr,
+        userStr
+      ]);
+    }
+  });
+
+  // User Custom Permissions Overrides
+  const userPermissions = permissions?.userPermissions || {};
+  Object.keys(userPermissions).forEach(u => {
+    const uConfig = userPermissions[u] || {};
+    if ((uConfig.modules && uConfig.modules.length > 0) || (uConfig.actions && uConfig.actions.length > 0)) {
+      rows.push([
+        `USER_PERM_${u}_MODULES`,
+        `Quyền module tài khoản ${u}`,
+        (uConfig.modules || []).join(', '),
+        "PHAN_QUYEN_USER",
+        "list",
+        `Các module được phép truy cập riêng của tài khoản ${u}`,
+        dateStr,
+        userStr
+      ]);
+      rows.push([
+        `USER_PERM_${u}_ACTIONS`,
+        `Quyền thao tác tài khoản ${u}`,
+        (uConfig.actions || []).join(', '),
+        "PHAN_QUYEN_USER",
+        "list",
+        `Thao tác được cấp riêng cho tài khoản ${u}`,
         dateStr,
         userStr
       ]);

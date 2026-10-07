@@ -30,6 +30,7 @@ import {
   X,
   Check
 } from 'lucide-react';
+import { PermissionMatrix } from './PermissionMatrix';
 
 const STANDARD_ROLES = ['ADMIN', 'KT', 'KHO', 'NPP', 'KD', 'NVKD'];
 
@@ -85,6 +86,7 @@ export function CaidatModule() {
   const [workingRestrictions, setWorkingRestrictions] = useState(() => JSON.parse(JSON.stringify(permissions?.userRestrictions || {})));
   const [workingUserWarehouses, setWorkingUserWarehouses] = useState(() => JSON.parse(JSON.stringify(permissions?.userWarehouses || {})));
   const [workingDataScopes, setWorkingDataScopes] = useState(() => JSON.parse(JSON.stringify(permissions?.dataScopes || {})));
+  const [workingUserPermissions, setWorkingUserPermissions] = useState(() => JSON.parse(JSON.stringify(permissions?.userPermissions || {})));
 
   // User warehouse assignment state
   const [selectedUserForWarehouse, setSelectedUserForWarehouse] = useState('');
@@ -128,6 +130,7 @@ export function CaidatModule() {
       if (permissions.userRestrictions) setWorkingRestrictions(JSON.parse(JSON.stringify(permissions.userRestrictions)));
       if (permissions.userWarehouses) setWorkingUserWarehouses(JSON.parse(JSON.stringify(permissions.userWarehouses)));
       if (permissions.dataScopes) setWorkingDataScopes(JSON.parse(JSON.stringify(permissions.dataScopes)));
+      if (permissions.userPermissions) setWorkingUserPermissions(JSON.parse(JSON.stringify(permissions.userPermissions)));
     }
   }, [permissions]);
 
@@ -171,6 +174,7 @@ export function CaidatModule() {
       const updatedPermissions = {
         ...permissions,
         roles: sanitizedRoles,
+        userPermissions: workingUserPermissions,
         userRestrictions: workingRestrictions,
         userWarehouses: workingUserWarehouses,
         dataScopes: workingDataScopes
@@ -178,6 +182,7 @@ export function CaidatModule() {
       setPermissions(updatedPermissions);
       setLocalItem(STORAGE_KEYS.PERMISSIONS, updatedPermissions);
       setWorkingRoles(sanitizedRoles);
+      setWorkingUserPermissions(workingUserPermissions);
 
       // 2. Build rows for CAI_DAT sheet
       const rowsToSave = buildCaiDatRows({
@@ -238,6 +243,7 @@ export function CaidatModule() {
             if (parsed.permissions.userRestrictions) setWorkingRestrictions(parsed.permissions.userRestrictions);
             if (parsed.permissions.userWarehouses) setWorkingUserWarehouses(parsed.permissions.userWarehouses);
             if (parsed.permissions.dataScopes) setWorkingDataScopes(parsed.permissions.dataScopes);
+            if (parsed.permissions.userPermissions) setWorkingUserPermissions(parsed.permissions.userPermissions);
           }
         }
         showToast(`Đã tải lại ${rows.length - 1} mục cài đặt mới nhất từ Google Sheet CAI_DAT.`);
@@ -485,6 +491,7 @@ export function CaidatModule() {
       },
       permissions: {
         roles: workingRoles,
+        userPermissions: workingUserPermissions,
         userRestrictions: workingRestrictions,
         userWarehouses: workingUserWarehouses,
         dataScopes: workingDataScopes
@@ -597,7 +604,7 @@ export function CaidatModule() {
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
-          3. Phân quyền Vai trò
+          3. Phân quyền Vai trò & Nhân viên
         </button>
 
         <button
@@ -851,124 +858,15 @@ export function CaidatModule() {
 
       {/* Tab 3: Permissions Matrix */}
       {activeTab === 'permissions' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">Ma trận Phân quyền & Vai trò (ROLE_*_MODULES & ACTIONS)</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Tích chọn các module màn hình và thao tác nghiệp vụ cho từng nhóm vai trò</p>
-            </div>
-
-            {/* Role Switcher */}
-            <div className="flex flex-wrap gap-1 bg-slate-100 p-1.5 rounded-2xl">
-              {STANDARD_ROLES.map(r => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setSelectedRole(r)}
-                  className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
-                    selectedRole === r ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Module Access Checkboxes */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-slate-700 uppercase">
-                Quyền truy cập Module màn hình ({workingRoles[selectedRole]?.modules?.length || 0}/{MODULE_DEFINITIONS.length})
-              </h4>
-              {selectedRole === 'ADMIN' ? (
-                <span className="text-[11px] font-bold text-purple-600 bg-purple-50 px-2.5 py-0.5 rounded-full">
-                  Vai trò ADMIN (Cố định module Cài đặt & Trang chủ để đảm bảo quyền quản trị)
-                </span>
-              ) : (
-                <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                  Tùy chỉnh phân quyền cho vai trò {selectedRole}
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {MODULE_DEFINITIONS.map(m => {
-                const isMandatoryAdmin = selectedRole === 'ADMIN' && (m.key === 'caidat' || m.key === 'home');
-                const isAllowed = isMandatoryAdmin || (workingRoles[selectedRole]?.modules || []).includes(m.key);
-
-                return (
-                  <label
-                    key={m.key}
-                    className={`p-3.5 rounded-2xl border flex items-center justify-between transition select-none ${
-                      isAllowed ? 'bg-purple-50/80 border-purple-200 text-purple-950 shadow-2xs' : 'bg-slate-50/60 border-slate-200 text-slate-500'
-                    } ${isMandatoryAdmin ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`}
-                  >
-                    <div className="min-w-0 pr-2">
-                      <p className="font-bold text-xs truncate">{m.name}</p>
-                      <p className="text-[10px] text-slate-400 truncate">
-                        {isMandatoryAdmin ? 'Module bắt buộc cho Quản trị viên' : m.desc}
-                      </p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={isAllowed}
-                      disabled={isMandatoryAdmin}
-                      onChange={() => !isMandatoryAdmin && handleToggleModuleForRole(selectedRole, m.key)}
-                      className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
-                    />
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Action Permissions Checkboxes */}
-          <div className="space-y-3 pt-4 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-slate-700 uppercase">Quyền thao tác nghiệp vụ đặc quyền</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {AVAILABLE_ACTIONS.map(act => {
-                const isMandatoryAdmin = selectedRole === 'ADMIN' && act.key === 'caidat.manage';
-                const isAllowed = isMandatoryAdmin || (workingRoles[selectedRole]?.actions || []).includes(act.key);
-
-                return (
-                  <label
-                    key={act.key}
-                    className={`p-3.5 rounded-2xl border flex items-center justify-between transition select-none ${
-                      isAllowed ? 'bg-blue-50/80 border-blue-200 text-blue-950 shadow-2xs' : 'bg-slate-50/60 border-slate-200 text-slate-500'
-                    } ${isMandatoryAdmin ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`}
-                  >
-                    <div className="min-w-0 pr-2">
-                      <p className="font-bold text-xs">{act.name}</p>
-                      <p className="text-[10px] text-slate-400">
-                        {isMandatoryAdmin ? 'Thao tác bắt buộc cho Quản trị viên' : act.desc}
-                      </p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={isAllowed}
-                      disabled={isMandatoryAdmin}
-                      onChange={() => !isMandatoryAdmin && handleToggleActionForRole(selectedRole, act.key)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
-                    />
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-slate-100 flex justify-end">
-            <button
-              type="button"
-              onClick={handleSaveAndSyncToSheet}
-              disabled={isSaving}
-              className="px-6 py-2.5 bg-purple-600 text-white font-bold rounded-xl text-xs hover:bg-purple-700 shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Đang lưu...' : 'Lưu & Ghi vào Sheet CAI_DAT'}
-            </button>
-          </div>
-        </div>
+        <PermissionMatrix
+          workingRoles={workingRoles}
+          setWorkingRoles={setWorkingRoles}
+          workingUserPermissions={workingUserPermissions}
+          setWorkingUserPermissions={setWorkingUserPermissions}
+          usersData={usersData}
+          onSave={handleSaveAndSyncToSheet}
+          isSaving={isSaving}
+        />
       )}
 
       {/* Tab 4: User Restrictions & Data Scopes */}

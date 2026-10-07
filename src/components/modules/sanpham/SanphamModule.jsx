@@ -482,13 +482,16 @@ export function SanphamModule({ onNavigateWithFilter }) {
                   const agg = aggregates.get(idLower) || { tonDau: 0, tongNhap: 0, tongXuat: 0, tonCuoi: 0 };
                   const tonCuoi = agg.tonCuoi;
                   const imgUrl = row[3] || '';
+                  const canViewDetail = hasActionPermission('sanpham.viewDetail');
 
                   return (
                     <tr 
                       key={idx} 
-                      onClick={() => setDetailProductRow(row)}
-                      className="hover:bg-blue-50/40 transition cursor-pointer group"
-                      title="Bấm để xem bảng chi tiết từng kho & lịch sử nhập xuất từng ngày"
+                      onClick={() => {
+                        if (canViewDetail) setDetailProductRow(row);
+                      }}
+                      className={`hover:bg-blue-50/40 transition group ${canViewDetail ? 'cursor-pointer' : 'cursor-default'}`}
+                      title={canViewDetail ? "Bấm để xem bảng chi tiết từng kho & lịch sử nhập xuất từng ngày" : undefined}
                     >
                       {visibleColumns
                         .filter(col => roleKey !== 'NPP' || !['ton_dau', 'tong_nhap', 'tong_xuat'].includes(col.key))
@@ -580,16 +583,18 @@ export function SanphamModule({ onNavigateWithFilter }) {
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <div className="flex items-center justify-center gap-1.5">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDetailProductRow(row);
-                                      }}
-                                      className="p-1 text-slate-400 hover:text-blue-600 transition"
-                                      title="Xem chi tiết tồn theo từng kho & nhập xuất từng ngày"
-                                    >
-                                      <ExternalLink className="w-4 h-4" />
-                                    </button>
+                                    {canViewDetail && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDetailProductRow(row);
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-blue-600 transition"
+                                        title="Xem chi tiết tồn theo từng kho & nhập xuất từng ngày"
+                                      >
+                                        <ExternalLink className="w-4 h-4" />
+                                      </button>
+                                    )}
                                     {hasActionPermission('sanpham.manage') && (
                                       <>
                                         <button

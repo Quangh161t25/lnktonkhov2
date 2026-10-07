@@ -184,6 +184,11 @@ export function AuthProvider({ children }) {
     if (roleKey === 'ADMIN') {
       return MODULE_DEFINITIONS.map(m => m.key);
     }
+    // Check user-specific permissions if configured
+    const userCustom = permissions?.userPermissions?.[currentUser.id];
+    if (userCustom?.modules && Array.isArray(userCustom.modules)) {
+      return userCustom.modules;
+    }
     const roleConfig = permissions?.roles?.[roleKey] || permissions?.roles?.[currentUser.role] || DEFAULT_PERMISSIONS.roles[roleKey] || {};
     let modules = Array.isArray(roleConfig.modules) ? roleConfig.modules : (DEFAULT_PERMISSIONS.roles[roleKey]?.modules || []);
     return modules;
@@ -202,6 +207,13 @@ export function AuthProvider({ children }) {
     if (!currentUser) return false;
     const roleKey = resolveRoleKey(currentUser.role);
     if (roleKey === 'ADMIN') return true;
+
+    // Check user-specific action permissions if configured
+    const userCustom = permissions?.userPermissions?.[currentUser.id];
+    if (userCustom?.actions && Array.isArray(userCustom.actions)) {
+      return userCustom.actions.includes(actionKey);
+    }
+
     const roleConfig = permissions?.roles?.[roleKey] || permissions?.roles?.[currentUser.role] || DEFAULT_PERMISSIONS.roles[roleKey] || {};
     const actions = Array.isArray(roleConfig.actions) ? roleConfig.actions : (DEFAULT_PERMISSIONS.roles[roleKey]?.actions || []);
     return actions.includes(actionKey);

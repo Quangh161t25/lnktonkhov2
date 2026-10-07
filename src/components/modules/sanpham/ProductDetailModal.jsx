@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from '../../common/Drawer';
 import { Pagination } from '../../common/Pagination';
 import { useData } from '../../../context/DataContext';
+import { useAuth } from '../../../context/AuthContext';
 import { useSettings } from '../../../context/SettingsContext';
 import { fetchProductDetail } from '../../../services/googleSheetsService';
 import { 
@@ -41,6 +42,7 @@ export function ProductDetailModal({
     warehouseProductData, 
     fetchModule 
   } = useData();
+  const { hasActionPermission } = useAuth();
   const { getAllSystemWarehouses } = useSettings();
 
   const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'WAREHOUSE' | 'TRANSACTIONS'
@@ -443,7 +445,7 @@ export function ProductDetailModal({
     return filteredTransactions.slice(start, start + pageSize);
   }, [filteredTransactions, safeCurrentPage, pageSize]);
 
-  if (!isOpen || !productRow) return null;
+  if (!isOpen || !productRow || !hasActionPermission('sanpham.viewDetail')) return null;
 
   return (
     <Drawer

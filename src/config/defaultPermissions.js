@@ -25,7 +25,7 @@ export const DEFAULT_PERMISSIONS = {
         "ton_npp", "doisoat", "nhanvien", "khachhang", "dubaonhap", "caidat"
       ],
       actions: [
-        "nx.manualAdd", "nx.upload", "nx.confirmWarehouse", "nx.delete",
+        "sanpham.viewDetail", "nx.manualAdd", "nx.upload", "nx.confirmWarehouse", "nx.delete",
         "sanpham.manage", "cngiasp.manage", "lendon.manage", "doisoat.manage", "caidat.manage"
       ]
     },
@@ -34,7 +34,7 @@ export const DEFAULT_PERMISSIONS = {
         "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanphamkho", "cngiasp", "lendon", "ton_npp", "doisoat"
       ],
       actions: [
-        "nx.upload", "cngiasp.manage", "lendon.manage", "doisoat.manage"
+        "sanpham.viewDetail", "nx.upload", "cngiasp.manage", "lendon.manage", "doisoat.manage"
       ]
     },
     KHO: {
@@ -42,7 +42,7 @@ export const DEFAULT_PERMISSIONS = {
         "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanphamkho", "ton_npp"
       ],
       actions: [
-        "nx.confirmWarehouse"
+        "sanpham.viewDetail", "nx.confirmWarehouse"
       ]
     },
     NPP: {
