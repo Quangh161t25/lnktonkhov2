@@ -74,57 +74,75 @@ export function calculateProductAggregates(nhapData = [], xuatData = [], transfe
   return map;
 }
 
-export function calculateWarehouseStockMap(nhapData = [], xuatData = [], transferData = [], warehouseProductData = []) {
-  // Map of "KHO|ID_SP" (upper) -> stock
+export function calculateWarehouseDetailStockMap(nhapData = [], xuatData = [], transferData = [], warehouseProductData = []) {
+  // Map of "KHO|ID_SP" (upper) -> { tonDau, nhap, xuat, chuyenDen, chuyenDi, tonCuoi }
   const map = new Map();
+
+  const getOrCreate = (kho, idSp) => {
+    const k = (kho || '').toString().trim().toUpperCase();
+    const id = (idSp || '').toString().trim().toUpperCase();
+    if (!k || !id) return null;
+    const key = `${k}|${id}`;
+    if (!map.has(key)) {
+      map.set(key, { tonDau: 0, nhap: 0, xuat: 0, chuyenDen: 0, chuyenDi: 0, tonCuoi: 0 });
+    }
+    return map.get(key);
+  };
 
   // Baseline from warehouseProductData
   (warehouseProductData || []).slice(1).forEach(row => {
-    const kho = (row[1] || '').toString().trim().toUpperCase();
-    const idSp = (row[2] || '').toString().trim().toUpperCase();
-    if (!kho || !idSp) return;
-    const key = `${kho}|${idSp}`;
-    const tonDau = cleanNumber(row[4]);
-    map.set(key, (map.get(key) || 0) + tonDau);
+    const item = getOrCreate(row[1], row[2]);
+    if (item) {
+      item.tonDau += cleanNumber(row[4]);
+    }
   });
 
   // Add Nhap to Kho
   (nhapData || []).slice(1).forEach(row => {
-    const kho = (row[11] || '').toString().trim().toUpperCase();
-    const idSp = (row[6] || '').toString().trim().toUpperCase();
-    if (!kho || !idSp) return;
-    const key = `${kho}|${idSp}`;
-    const slg = cleanNumber(row[8]);
-    map.set(key, (map.get(key) || 0) + slg);
+    const item = getOrCreate(row[11], row[6]);
+    if (item) {
+      item.nhap += cleanNumber(row[8]);
+    }
   });
 
   // Subtract Xuat from Kho
   (xuatData || []).slice(1).forEach(row => {
-    const kho = (row[11] || '').toString().trim().toUpperCase();
-    const idSp = (row[6] || '').toString().trim().toUpperCase();
-    if (!kho || !idSp) return;
-    const key = `${kho}|${idSp}`;
-    const slg = cleanNumber(row[8]);
-    map.set(key, (map.get(key) || 0) - slg);
+    const item = getOrCreate(row[11], row[6]);
+    if (item) {
+      item.xuat += cleanNumber(row[8]);
+    }
   });
 
   // Chuyen kho: subtract from kho_di, add to kho_nhan
   (transferData || []).slice(1).forEach(row => {
-    const khoDi = (row[6] || '').toString().trim().toUpperCase();
-    const khoNhan = (row[7] || '').toString().trim().toUpperCase();
-    const idSp = (row[3] || '').toString().trim().toUpperCase();
-    if (!idSp) return;
+    const khoDi = (row[6] || '').toString().trim();
+    const khoNhan = (row[7] || '').toString().trim();
+    const idSp = (row[3] || '').toString().trim();
     const slg = cleanNumber(row[5]);
 
     if (khoDi) {
-      const keyDi = `${khoDi}|${idSp}`;
-      map.set(keyDi, (map.get(keyDi) || 0) - slg);
+      const itemDi = getOrCreate(khoDi, idSp);
+      if (itemDi) itemDi.chuyenDi += slg;
     }
     if (khoNhan) {
-      const keyNhan = `${khoNhan}|${idSp}`;
-      map.set(keyNhan, (map.get(keyNhan) || 0) + slg);
+      const itemNhan = getOrCreate(khoNhan, idSp);
+      if (itemNhan) itemNhan.chuyenDen += slg;
     }
   });
 
+  // Compute tonCuoi
+  map.forEach(item => {
+    item.tonCuoi = item.tonDau + item.nhap - item.xuat + item.chuyenDen - item.chuyenDi;
+  });
+
   return map;
+}
+
+export function calculateWarehouseStockMap(nhapData = [], xuatData = [], transferData = [], warehouseProductData = []) {
+  const detailMap = calculateWarehouseDetailStockMap(nhapData, xuatData, transferData, warehouseProductData);
+  const stockMap = new Map();
+  detailMap.forEach((v, k) => {
+    stockMap.set(k, v.tonCuoi);
+  });
+  return stockMap;
 }

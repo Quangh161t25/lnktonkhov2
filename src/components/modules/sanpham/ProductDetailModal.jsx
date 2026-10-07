@@ -33,7 +33,8 @@ export function ProductDetailModal({
   isOpen,
   onClose,
   productRow,
-  initialAggregates = null
+  initialAggregates = null,
+  initialWarehouse = 'ALL'
 }) {
   const { 
     nhapData, 
@@ -46,8 +47,15 @@ export function ProductDetailModal({
   const { getAllSystemWarehouses } = useSettings();
 
   const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'WAREHOUSE' | 'TRANSACTIONS'
-  const [selectedKho, setSelectedKho] = useState('ALL');
+  const [selectedKho, setSelectedKho] = useState(initialWarehouse || 'ALL');
   const [selectedType, setSelectedType] = useState('ALL');
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedKho(initialWarehouse || 'ALL');
+      setCurrentPage(1);
+    }
+  }, [isOpen, initialWarehouse]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -216,6 +224,22 @@ export function ProductDetailModal({
 
     return computed;
   }, [serverDetail, warehouseBreakdown, initialAggregates]);
+
+  // Totals for selected warehouse or overall
+  const activeTotals = useMemo(() => {
+    if (selectedKho !== 'ALL') {
+      const match = warehouseBreakdown.find(w => w.kho.toUpperCase() === selectedKho.toUpperCase());
+      if (match) {
+        return {
+          tonDau: match.tonDau,
+          nhap: match.nhap,
+          xuat: match.xuat,
+          tonCuoi: match.tonCuoi
+        };
+      }
+    }
+    return overallTotals;
+  }, [selectedKho, warehouseBreakdown, overallTotals]);
 
   // 2. Chronological Daily Transactions (Nhập & Xuất theo ngày từng kho)
   const allTransactions = useMemo(() => {
@@ -502,27 +526,35 @@ export function ProductDetailModal({
           {/* Quick Aggregate KPI Badges */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full md:w-auto shrink-0">
             <div className="px-3 py-2 bg-white rounded-xl border border-slate-200 text-center shadow-sm">
-              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Tồn đầu</div>
-              <div className="text-sm font-extrabold text-slate-700">{formatNumber(overallTotals.tonDau)}</div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                {selectedKho === 'ALL' ? 'Tồn đầu' : `Tồn đầu (${selectedKho})`}
+              </div>
+              <div className="text-sm font-extrabold text-slate-700">{formatNumber(activeTotals.tonDau)}</div>
             </div>
             <div className="px-3 py-2 bg-white rounded-xl border border-slate-200 text-center shadow-sm">
-              <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Tổng Nhập</div>
-              <div className="text-sm font-extrabold text-blue-600">{formatNumber(overallTotals.nhap)}</div>
+              <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">
+                {selectedKho === 'ALL' ? 'Tổng Nhập' : `Nhập (${selectedKho})`}
+              </div>
+              <div className="text-sm font-extrabold text-blue-600">{formatNumber(activeTotals.nhap)}</div>
             </div>
             <div className="px-3 py-2 bg-white rounded-xl border border-slate-200 text-center shadow-sm">
-              <div className="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Tổng Xuất</div>
-              <div className="text-sm font-extrabold text-orange-600">{formatNumber(overallTotals.xuat)}</div>
+              <div className="text-[10px] text-orange-600 font-bold uppercase tracking-wider">
+                {selectedKho === 'ALL' ? 'Tổng Xuất' : `Xuất (${selectedKho})`}
+              </div>
+              <div className="text-sm font-extrabold text-orange-600">{formatNumber(activeTotals.xuat)}</div>
             </div>
             <div className={`px-3 py-2 rounded-xl border text-center shadow-sm ${
-              overallTotals.tonCuoi <= 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
+              activeTotals.tonCuoi <= 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
             }`}>
               <div className={`text-[10px] font-bold uppercase tracking-wider ${
-                overallTotals.tonCuoi <= 0 ? 'text-red-700' : 'text-emerald-700'
-              }`}>Tồn cuối tổng</div>
-              <div className={`text-sm font-black ${
-                overallTotals.tonCuoi <= 0 ? 'text-red-700' : 'text-emerald-700'
+                activeTotals.tonCuoi <= 0 ? 'text-red-700' : 'text-emerald-700'
               }`}>
-                {formatNumber(overallTotals.tonCuoi)}
+                {selectedKho === 'ALL' ? 'Tồn cuối tổng' : `Tồn kho (${selectedKho})`}
+              </div>
+              <div className={`text-sm font-black ${
+                activeTotals.tonCuoi <= 0 ? 'text-red-700' : 'text-emerald-700'
+              }`}>
+                {formatNumber(activeTotals.tonCuoi)}
               </div>
             </div>
           </div>
