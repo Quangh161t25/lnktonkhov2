@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Modal } from '../../common/Modal';
+import { Drawer } from '../../common/Drawer';
+import { Pagination } from '../../common/Pagination';
 import { useData } from '../../../context/DataContext';
 import { useSettings } from '../../../context/SettingsContext';
 import { fetchProductDetail } from '../../../services/googleSheetsService';
@@ -50,6 +51,8 @@ export function ProductDetailModal({
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [serverDetail, setServerDetail] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
 
   // Extract Product Info
   const productId = (productRow?.[0] || '').toString().trim();
@@ -443,10 +446,24 @@ export function ProductDetailModal({
     return { totalNhap, totalXuat, totalAmountNhap, totalAmountXuat };
   }, [filteredTransactions]);
 
+  // Reset pagination to page 1 when any filter or selected product changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [productId, selectedKho, selectedType, dateFrom, dateTo, searchTerm]);
+
+  // Safe pagination
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedTransactions = useMemo(() => {
+    const start = (safeCurrentPage - 1) * pageSize;
+    return filteredTransactions.slice(start, start + pageSize);
+  }, [filteredTransactions, safeCurrentPage, pageSize]);
+
   if (!isOpen || !productRow) return null;
 
   return (
-    <Modal
+    <Drawer
       isOpen={isOpen}
       onClose={onClose}
       title={
@@ -458,7 +475,8 @@ export function ProductDetailModal({
           </span>
         </div>
       }
-      maxWidth="max-w-6xl"
+      width="w-full sm:w-[92vw] md:w-[88vw] lg:w-[82vw] xl:w-[75vw] max-w-7xl"
+      contentClassName="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4"
     >
       <div className="space-y-4">
         {/* Product Card Header */}
@@ -678,7 +696,9 @@ export function ProductDetailModal({
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <FileSpreadsheet className="w-4 h-4 text-blue-600" />
                 <span>Nhật ký Nhập & Xuất từng ngày, từng kho</span>
-                <span className="text-slate-400 font-normal">({filteredTransactions.length} giao dịch)</span>
+                <span className="text-slate-400 font-normal">
+                  ({filteredTransactions.length} giao dịch{totalPages > 1 ? ` - Trang ${safeCurrentPage}/${totalPages}` : ''})
+                </span>
               </h4>
 
               {/* Filter summary badges */}
@@ -769,122 +789,140 @@ export function ProductDetailModal({
               )}
             </div>
 
-            {/* Transactions Table */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm max-h-72 overflow-y-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 text-[11px] uppercase">
-                  <tr>
-                    <th className="py-2.5 px-3 w-28">Ngày</th>
-                    <th className="py-2.5 px-3 w-24">Loại</th>
-                    <th className="py-2.5 px-3 w-28">Mã đơn</th>
-                    <th className="py-2.5 px-3 w-24">Kho</th>
-                    <th className="py-2.5 px-3">Đối tác / Giao dịch</th>
-                    <th className="py-2.5 px-3 text-right w-24">Số lượng</th>
-                    <th className="py-2.5 px-3 text-right w-28 font-black text-slate-800 bg-slate-100/70">Số lượng còn lại</th>
-                    <th className="py-2.5 px-3 text-right w-24">Đơn giá</th>
-                    <th className="py-2.5 px-3 text-right w-24">Thành tiền</th>
-                    <th className="py-2.5 px-3">Ghi chú</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-normal">
-                  {filteredTransactions.length === 0 ? (
+            {/* Transactions Table & Pagination */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+              <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 text-[11px] uppercase">
                     <tr>
-                      <td colSpan={10} className="py-10 text-center text-slate-400 italic">
-                        Không có giao dịch Nhập/Xuất nào cho sản phẩm này theo bộ lọc đã chọn.
-                      </td>
+                      <th className="py-2.5 px-3 w-28">Ngày</th>
+                      <th className="py-2.5 px-3 w-24">Loại</th>
+                      <th className="py-2.5 px-3 w-28">Mã đơn</th>
+                      <th className="py-2.5 px-3 w-24">Kho</th>
+                      <th className="py-2.5 px-3">Đối tác / Giao dịch</th>
+                      <th className="py-2.5 px-3 text-right w-24">Số lượng</th>
+                      <th className="py-2.5 px-3 text-right w-28 font-black text-slate-800 bg-slate-100/70">Số lượng còn lại</th>
+                      <th className="py-2.5 px-3 text-right w-24">Đơn giá</th>
+                      <th className="py-2.5 px-3 text-right w-24">Thành tiền</th>
+                      <th className="py-2.5 px-3">Ghi chú</th>
                     </tr>
-                  ) : (
-                    filteredTransactions.map((tx) => {
-                      const isNhap = tx.type === 'NHẬP';
-                      const isXuat = tx.type === 'XUẤT';
-                      const isTransfer = tx.type === 'CHUYỂN KHO';
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-normal">
+                    {filteredTransactions.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="py-10 text-center text-slate-400 italic">
+                          Không có giao dịch Nhập/Xuất nào cho sản phẩm này theo bộ lọc đã chọn.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedTransactions.map((tx) => {
+                        const isNhap = tx.type === 'NHẬP';
+                        const isXuat = tx.type === 'XUẤT';
+                        const isTransfer = tx.type === 'CHUYỂN KHO';
 
-                      return (
-                        <tr key={tx.id} className="hover:bg-slate-50/70 transition">
-                          {/* Ngày */}
-                          <td className="py-2 px-3 text-slate-600 font-mono whitespace-nowrap">
-                            {formatDateVN(tx.date)}
-                          </td>
+                        return (
+                          <tr key={tx.id} className="hover:bg-slate-50/70 transition">
+                            {/* Ngày */}
+                            <td className="py-2 px-3 text-slate-600 font-mono whitespace-nowrap">
+                              {formatDateVN(tx.date)}
+                            </td>
 
-                          {/* Loại */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
-                              isNhap ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                              isXuat ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                              'bg-purple-50 text-purple-700 border-purple-200'
-                            }`}>
-                              {isNhap && <ArrowDownToLine className="w-2.5 h-2.5" />}
-                              {isXuat && <ArrowUpFromLine className="w-2.5 h-2.5" />}
-                              {isTransfer && <ArrowLeftRight className="w-2.5 h-2.5" />}
-                              {tx.type}
-                            </span>
-                          </td>
+                            {/* Loại */}
+                            <td className="py-2 px-3 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                isNhap ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                isXuat ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                'bg-purple-50 text-purple-700 border-purple-200'
+                              }`}>
+                                {isNhap && <ArrowDownToLine className="w-2.5 h-2.5" />}
+                                {isXuat && <ArrowUpFromLine className="w-2.5 h-2.5" />}
+                                {isTransfer && <ArrowLeftRight className="w-2.5 h-2.5" />}
+                                {tx.type}
+                              </span>
+                            </td>
 
-                          {/* MDH */}
-                          <td className="py-2 px-3 font-bold text-slate-800 whitespace-nowrap">
-                            {tx.mdh || '-'}
-                          </td>
+                            {/* MDH */}
+                            <td className="py-2 px-3 font-bold text-slate-800 whitespace-nowrap">
+                              {tx.mdh || '-'}
+                            </td>
 
-                          {/* Kho */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-slate-100 text-slate-700">
-                              {tx.kho || '-'}
-                            </span>
-                          </td>
+                            {/* Kho */}
+                            <td className="py-2 px-3 whitespace-nowrap">
+                              <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-slate-100 text-slate-700">
+                                {tx.kho || '-'}
+                              </span>
+                            </td>
 
-                          {/* Đối tác */}
-                          <td className="py-2 px-3 text-slate-700">
-                            <div className="truncate max-w-[180px]" title={tx.partnerName || tx.partnerCode}>
-                              {tx.partnerName || tx.partnerCode || '-'}
-                            </div>
-                          </td>
+                            {/* Đối tác */}
+                            <td className="py-2 px-3 text-slate-700">
+                              <div className="truncate max-w-[180px]" title={tx.partnerName || tx.partnerCode}>
+                                {tx.partnerName || tx.partnerCode || '-'}
+                              </div>
+                            </td>
 
-                          {/* Số lượng */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap">
-                            <span className={`font-extrabold ${
-                              isNhap ? 'text-blue-600' :
-                              isXuat ? 'text-orange-600' :
-                              'text-purple-600'
-                            }`}>
-                              {isNhap ? `+${formatNumber(tx.slg)}` : isXuat ? `-${formatNumber(tx.slg)}` : formatNumber(tx.slg)}
-                            </span>
-                          </td>
+                            {/* Số lượng */}
+                            <td className="py-2 px-3 text-right whitespace-nowrap">
+                              <span className={`font-extrabold ${
+                                isNhap ? 'text-blue-600' :
+                                isXuat ? 'text-orange-600' :
+                                'text-purple-600'
+                              }`}>
+                                {isNhap ? `+${formatNumber(tx.slg)}` : isXuat ? `-${formatNumber(tx.slg)}` : formatNumber(tx.slg)}
+                              </span>
+                            </td>
 
-                          {/* Số lượng còn lại sau giao dịch */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap bg-slate-50/50">
-                            <span className={`font-black font-mono text-xs px-2 py-0.5 rounded border ${
-                              (tx.balanceAfter ?? 0) <= 0 
-                                ? 'bg-red-50 text-red-600 border-red-200' 
-                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            }`}>
-                              {formatNumber(tx.balanceAfter)}
-                            </span>
-                          </td>
+                            {/* Số lượng còn lại sau giao dịch */}
+                            <td className="py-2 px-3 text-right whitespace-nowrap bg-slate-50/50">
+                              <span className={`font-black font-mono text-xs px-2 py-0.5 rounded border ${
+                                (tx.balanceAfter ?? 0) <= 0 
+                                  ? 'bg-red-50 text-red-600 border-red-200' 
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}>
+                                {formatNumber(tx.balanceAfter)}
+                              </span>
+                            </td>
 
-                          {/* Đơn giá */}
-                          <td className="py-2 px-3 text-right text-slate-500 whitespace-nowrap">
-                            {tx.donGia > 0 ? formatCurrency(tx.donGia) : '-'}
-                          </td>
+                            {/* Đơn giá */}
+                            <td className="py-2 px-3 text-right text-slate-500 whitespace-nowrap">
+                              {tx.donGia > 0 ? formatCurrency(tx.donGia) : '-'}
+                            </td>
 
-                          {/* Thành tiền */}
-                          <td className="py-2 px-3 text-right font-semibold text-slate-800 whitespace-nowrap">
-                            {tx.thanhTien > 0 ? formatCurrency(tx.thanhTien) : '-'}
-                          </td>
+                            {/* Thành tiền */}
+                            <td className="py-2 px-3 text-right font-semibold text-slate-800 whitespace-nowrap">
+                              {tx.thanhTien > 0 ? formatCurrency(tx.thanhTien) : '-'}
+                            </td>
 
-                          {/* Ghi chú */}
-                          <td className="py-2 px-3 text-slate-500 max-w-[150px] truncate" title={tx.note}>
-                            {tx.note || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                            {/* Ghi chú */}
+                            <td className="py-2 px-3 text-slate-500 max-w-[150px] truncate" title={tx.note}>
+                              {tx.note || '-'}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {filteredTransactions.length > 0 && (
+                <Pagination
+                  currentPage={safeCurrentPage}
+                  totalItems={filteredTransactions.length}
+                  pageSize={pageSize}
+                  onPageChange={setCurrentPage}
+                  onPageSizeChange={(newSize) => {
+                    setPageSize(newSize);
+                    setCurrentPage(1);
+                  }}
+                  pageSizeOptions={[50, 100, 200, 500]}
+                />
+              )}
             </div>
           </div>
         )}
       </div>
-    </Modal>
+    </Drawer>
   );
 }
+
+export { ProductDetailModal as ProductDetailDrawer };
