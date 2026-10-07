@@ -9,8 +9,10 @@ import { ExcelUploadModal } from '../../common/ExcelUploadModal';
 import { BarcodeScannerModal } from '../../common/BarcodeScannerModal';
 import { OcrOrderModal } from '../../common/OcrOrderModal';
 import { ColumnManagerModal } from '../../common/ColumnManagerModal';
+import { HistoryModal } from '../../common/HistoryModal';
 import { useColumnManager } from '../../../hooks/useColumnManager';
 import { exportToExcel, downloadModuleTemplate } from '../../../services/excelService';
+import { diffOrderChanges } from '../../../services/auditLogService';
 import { formatNumber, formatCurrency, formatDateVN, parseSimpleSheetDate, cleanNumber, matchesSearch } from '../../../utils/formatters';
 import { 
   Plus, 
@@ -28,7 +30,8 @@ import {
   AlertCircle,
   Building2,
   SlidersHorizontal,
-  RotateCw
+  RotateCw,
+  History
 } from 'lucide-react';
 
 const DEFAULT_XUAT_COLUMNS = [
@@ -53,7 +56,7 @@ const LOAI_HINH_OPTIONS = [
 ];
 
 export function XuatModule() {
-  const { xuatData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, fetchUsersData, loadingModules } = useData();
+  const { xuatData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, fetchUsersData, loadingModules, logAuditAction } = useData();
   const { currentUser, hasActionPermission, canAccessWarehouse, resolveRoleKey } = useAuth();
   const { getWarehouseOptions, getAllSystemWarehouses } = useSettings();
 
@@ -84,6 +87,8 @@ export function XuatModule() {
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editOrderRows, setEditOrderRows] = useState(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [selectedHistoryMdh, setSelectedHistoryMdh] = useState('');
 
   // Always fetch latest data on mount: xuat, cngiasp, sanpham, sanphamkho, and usersData (for suggestions)
   React.useEffect(() => {
@@ -265,6 +270,16 @@ export function XuatModule() {
     if (window.confirm(`Bạn có chắc chắn muốn xóa dòng xuất: ${desc}?`)) {
       try {
         await deleteRow('xuat', sheetRow);
+        if (logAuditAction) {
+          await logAuditAction({
+            moduleName: 'XUẤT',
+            actionType: 'XÓA_DÒNG',
+            orderId: row[3] || '',
+            targetObject: `${row[6]} - ${row[7] || ''}`,
+            summary: `Xóa dòng sản phẩm ${row[6]} (${row[7] || ''}) thuộc đơn xuất ${row[3]} (SL: ${formatNumber(row[8])}, Tiền: ${formatCurrency(row[10])})`,
+            oldData: row
+          });
+        }
         await fetchModule('xuat');
       } catch (err) {
         alert("Lỗi khi xóa dòng: " + err.message);
@@ -275,7 +290,25 @@ export function XuatModule() {
   const handleDeleteOrder = async (mdh) => {
     if (!mdh) return;
     try {
+      const rowsOfOrder = (xuatData || []).slice(1)
+        .map((r, idx) => {
+          const item = [...r];
+          item._sheetRow = idx + 2;
+          return item;
+        })
+        .filter(r => (r[3] || '').toString().trim().toLowerCase() === mdh.toLowerCase());
+
       await deleteOrder('xuat', mdh);
+      if (logAuditAction) {
+        await logAuditAction({
+          moduleName: 'XUẤT',
+          actionType: 'XÓA_ĐƠN',
+          orderId: mdh,
+          targetObject: `Đơn xuất ${mdh} (${rowsOfOrder.length} sản phẩm)`,
+          summary: `Xóa toàn bộ đơn xuất ${mdh} gồm ${rowsOfOrder.length} sản phẩm`,
+          oldData: rowsOfOrder
+        });
+      }
       await fetchModule('xuat');
     } catch (err) {
       alert("Lỗi khi xóa đơn xuất: " + err.message);
@@ -284,6 +317,10 @@ export function XuatModule() {
 
   const handleSaveOrder = async ({ rowsToSave, deletedSheetRows }) => {
     try {
+      const isEditing = Boolean(editOrderRows && editOrderRows.length > 0);
+      const mdh = (rowsToSave[0]?.rowValues[3] || '').toString().trim();
+      const customer = (rowsToSave[0]?.rowValues[5] || rowsToSave[0]?.rowValues[4] || '').toString().trim();
+
       const existingUpdates = rowsToSave.filter(item => item._sheetRow && item._sheetRow > 1);
       for (const item of existingUpdates) {
         await updateRow('xuat', item._sheetRow, item.rowValues);
@@ -303,6 +340,38 @@ export function XuatModule() {
         }
       }
 
+      // Record Audit Log
+      const newSavedRows = rowsToSave.map(it => it.rowValues);
+      if (logAuditAction) {
+        if (isEditing) {
+          const diffResult = diffOrderChanges({
+            oldRows: editOrderRows,
+            newRows: newSavedRows,
+            moduleType: 'XUẤT'
+          });
+          await logAuditAction({
+            moduleName: 'XUẤT',
+            actionType: 'CHỈNH_SỬA',
+            orderId: mdh,
+            targetObject: customer,
+            summary: `Chỉnh sửa đơn xuất ${mdh}: ${diffResult.summary}`,
+            oldData: editOrderRows,
+            newData: newSavedRows
+          });
+        } else {
+          const totalQty = newSavedRows.reduce((acc, r) => acc + (cleanNumber(r[8]) || 0), 0);
+          const totalAmount = newSavedRows.reduce((acc, r) => acc + (cleanNumber(r[10]) || 0), 0);
+          await logAuditAction({
+            moduleName: 'XUẤT',
+            actionType: 'THÊM_MỚI',
+            orderId: mdh,
+            targetObject: customer,
+            summary: `Tạo mới đơn xuất ${mdh} (${customer}): ${newSavedRows.length} sản phẩm, Tổng SL: ${formatNumber(totalQty)}, Tổng tiền: ${formatCurrency(totalAmount)}`,
+            newData: newSavedRows
+          });
+        }
+      }
+
       await fetchModule('xuat');
     } catch (err) {
       console.error("handleSaveOrder xuat error:", err);
@@ -315,9 +384,21 @@ export function XuatModule() {
       return alert("Bạn không có quyền xác nhận trạng thái kho.");
     }
     const updated = [...row];
+    const oldStatus = updated[16] || '';
     updated[16] = newStatus;
     try {
       await updateRow('xuat', row._sheetRow, updated);
+      if (logAuditAction) {
+        await logAuditAction({
+          moduleName: 'XUẤT',
+          actionType: 'CHỈNH_SỬA',
+          orderId: row[3] || '',
+          targetObject: `${row[6]} - ${row[7] || ''}`,
+          summary: `Cập nhật trạng thái kho đơn xuất ${row[3]} (${row[6]}): "${oldStatus}" ➔ "${newStatus}"`,
+          oldData: row,
+          newData: updated
+        });
+      }
       await fetchModule('xuat');
     } catch (err) {
       alert("Lỗi cập nhật trạng thái: " + err.message);
@@ -339,6 +420,16 @@ export function XuatModule() {
       const dataRows = excelRows.slice(1).filter(r => r.some(c => c !== ''));
       if (dataRows.length > 0) {
         await appendRows('xuat', dataRows);
+        if (logAuditAction) {
+          await logAuditAction({
+            moduleName: 'XUẤT',
+            actionType: 'IMPORT_EXCEL',
+            orderId: `EXCEL_${Date.now()}`,
+            targetObject: `File Excel (${dataRows.length} dòng)`,
+            summary: `Import dữ liệu từ file Excel vào danh sách Xuất: ${dataRows.length} dòng`,
+            newData: dataRows
+          });
+        }
         await fetchModule('xuat');
         alert(`Đã nhập thành công ${dataRows.length} dòng.`);
       }
@@ -419,6 +510,18 @@ export function XuatModule() {
             >
               <FileText className="w-3.5 h-3.5 text-indigo-600" />
               Quét OCR
+            </button>
+
+            <button
+              onClick={() => {
+                setSelectedHistoryMdh('');
+                setIsHistoryModalOpen(true);
+              }}
+              className="px-2.5 py-1.5 bg-amber-50 text-amber-800 font-bold rounded-lg text-xs hover:bg-amber-100 transition flex items-center gap-1.5 border border-amber-200 shadow-sm"
+              title="Xem nhật ký lịch sử xuất kho"
+            >
+              <History className="w-3.5 h-3.5 text-amber-700" />
+              Lịch sử xuất
             </button>
 
             <button
@@ -705,6 +808,17 @@ export function XuatModule() {
                               <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 whitespace-nowrap ${alignClass}`}>
                                 <div className="flex items-center justify-center gap-1">
                                   <button
+                                    onClick={() => {
+                                      setSelectedHistoryMdh(row[3]);
+                                      setIsHistoryModalOpen(true);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition cursor-pointer"
+                                    title={`Xem lịch sử thay đổi của đơn ${row[3]}`}
+                                  >
+                                    <History className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
                                     onClick={() => handleEditRow(row)}
                                     className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer"
                                     title="Chỉnh sửa đơn xuất"
@@ -815,6 +929,18 @@ export function XuatModule() {
           orderRows={printOrderRows}
         />
       )}
+
+      {/* Audit History Modal */}
+      <HistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => {
+          setIsHistoryModalOpen(false);
+          setSelectedHistoryMdh('');
+        }}
+        defaultModule="XUẤT"
+        defaultOrderId={selectedHistoryMdh}
+        title="Lịch sử Xuất kho"
+      />
     </div>
   );
 }

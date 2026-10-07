@@ -3,6 +3,7 @@ import { CONFIG } from '../config/constants';
 import { SIMPLE_SHEET_MODULES } from '../config/dataSources';
 import { fetchSheetValues, fetchAggregates, updateSheetRange, appendSheetValues } from '../services/googleSheetsService';
 import { parseCaiDatRows, saveCaiDatToGoogleSheet, buildCaiDatRows } from '../services/caiDatService';
+import { buildAuditLogRow } from '../services/auditLogService';
 import { getLocalItem, setLocalItem, STORAGE_KEYS } from '../utils/storage';
 import { cleanNumber, normalizeLoginValue, parseSimpleSheetDate, resolveEffectivePrice } from '../utils/formatters';
 import { useAuth } from './AuthContext';
@@ -11,7 +12,7 @@ import { useSettings } from './SettingsContext';
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
-  const { updateUsers, applyParsedPermissions } = useAuth();
+  const { currentUser, updateUsers, applyParsedPermissions } = useAuth();
   const { applyParsedSettings } = useSettings();
 
   const [nhapData, setNhapData] = useState(() => getLocalItem(STORAGE_KEYS.NHAP_CACHE, []));
@@ -25,6 +26,7 @@ export function DataProvider({ children }) {
   const [cngiaspData, setCngiaspData] = useState(() => getLocalItem(STORAGE_KEYS.CNGIASP_CACHE, []));
   const [lenDonData, setLenDonData] = useState(() => getLocalItem(STORAGE_KEYS.LENDON_CACHE, []));
   const [caidatData, setCaidatData] = useState(() => getLocalItem(STORAGE_KEYS.CAIDAT_CACHE, []));
+  const [lichSuData, setLichSuData] = useState(() => getLocalItem(STORAGE_KEYS.LICHSU_CACHE, []));
   const [aggregatesData, setAggregatesData] = useState(() => getLocalItem('lnk_aggregates_cache', {}));
   const [nppProductIdsData, setNppProductIdsData] = useState(() => getLocalItem('lnk_npp_products_cache', []));
 
@@ -79,6 +81,10 @@ export function DataProvider({ children }) {
         setCaidatData(data);
         setLocalItem(STORAGE_KEYS.CAIDAT_CACHE, data);
         break;
+      case 'lichsu':
+        setLichSuData(data);
+        setLocalItem(STORAGE_KEYS.LICHSU_CACHE, data);
+        break;
       default:
         break;
     }
@@ -97,6 +103,7 @@ export function DataProvider({ children }) {
       case 'cngiasp': return cngiaspData;
       case 'lendon': return lenDonData;
       case 'caidat': return caidatData;
+      case 'lichsu': return lichSuData;
       default: return [];
     }
   };
@@ -180,29 +187,48 @@ export function DataProvider({ children }) {
     return fetchPromise;
   }, [applyParsedSettings, applyParsedPermissions]);
 
+  const inFlightAggregates = useRef({});
+  const aggregatesDataRef = useRef(aggregatesData);
+  const nppProductIdsDataRef = useRef(nppProductIdsData);
+  aggregatesDataRef.current = aggregatesData;
+  nppProductIdsDataRef.current = nppProductIdsData;
+
   // Fetch stock aggregates computed server-side (avoids sending raw order sheets across network)
   const fetchAggregatesData = useCallback(async (options = {}) => {
     const { force = false, nppId = '', nppName = '' } = options;
-    setLoadingModules(prev => ({ ...prev, aggregates: true }));
-    try {
-      const res = await fetchAggregates({ force, nppId, nppName });
-      if (res && res.aggregates) {
-        setAggregatesData(res.aggregates);
-        setLocalItem('lnk_aggregates_cache', res.aggregates);
-        if (res.nppProductIds) {
-          setNppProductIdsData(res.nppProductIds);
-          setLocalItem('lnk_npp_products_cache', res.nppProductIds);
-        }
-        return res;
-      }
-      return { aggregates: {}, nppProductIds: [] };
-    } catch (err) {
-      console.error("fetchAggregatesData error:", err);
-      return { aggregates: aggregatesData, nppProductIds: nppProductIdsData };
-    } finally {
-      setLoadingModules(prev => ({ ...prev, aggregates: false }));
+    const fetchKey = `${nppId || ''}|${nppName || ''}`;
+
+    if (!force && inFlightAggregates.current[fetchKey]) {
+      return inFlightAggregates.current[fetchKey];
     }
-  }, [aggregatesData, nppProductIdsData]);
+
+    setLoadingModules(prev => ({ ...prev, aggregates: true }));
+
+    const promise = (async () => {
+      try {
+        const res = await fetchAggregates({ force, nppId, nppName });
+        if (res && res.aggregates) {
+          setAggregatesData(res.aggregates);
+          setLocalItem('lnk_aggregates_cache', res.aggregates);
+          if (res.nppProductIds) {
+            setNppProductIdsData(res.nppProductIds);
+            setLocalItem('lnk_npp_products_cache', res.nppProductIds);
+          }
+          return res;
+        }
+        return { aggregates: aggregatesDataRef.current, nppProductIds: nppProductIdsDataRef.current };
+      } catch (err) {
+        console.error("fetchAggregatesData error:", err);
+        return { aggregates: aggregatesDataRef.current, nppProductIds: nppProductIdsDataRef.current };
+      } finally {
+        delete inFlightAggregates.current[fetchKey];
+        setLoadingModules(prev => ({ ...prev, aggregates: false }));
+      }
+    })();
+
+    inFlightAggregates.current[fetchKey] = promise;
+    return promise;
+  }, []);
 
   // Fetch Essential System Configuration (Home only needs system settings/permissions; business sheets lazy-load on navigation)
   const fetchAllData = useCallback(async () => {
@@ -537,6 +563,139 @@ export function DataProvider({ children }) {
     return rowsToUpdate.length;
   }, [fetchModule, updateRow, getProductMap]);
 
+  // Fetch audit log data from LICH_SU
+  const fetchLichSuData = useCallback((force = false) => {
+    return fetchModule('lichsu', force);
+  }, [fetchModule]);
+
+  // Non-blocking log action to LICH_SU
+  const logAuditAction = useCallback(async ({
+    moduleName,
+    actionType,
+    orderId = '',
+    targetObject = '',
+    summary = '',
+    oldData = null,
+    newData = null
+  }) => {
+    try {
+      const row = buildAuditLogRow({
+        user: currentUser,
+        moduleName,
+        actionType,
+        orderId,
+        targetObject,
+        summary,
+        oldData,
+        newData,
+        restoreStatus: 'GỐC'
+      });
+
+      // Update local state immediately
+      setLichSuData(prev => {
+        const current = Array.isArray(prev) ? prev : [];
+        if (current.length === 0) return [row];
+        const hasHeader = current[0] && current[0][0] === 'ID';
+        const next = hasHeader ? [current[0], row, ...current.slice(1)] : [row, ...current];
+        setLocalItem(STORAGE_KEYS.LICHSU_CACHE, next);
+        return next;
+      });
+
+      // Background write to Google Sheets LICH_SU
+      appendSheetValues(CONFIG.lichSuSheetName, [row]).catch(err => {
+        console.warn('Background append to LICH_SU failed:', err);
+      });
+
+      return row;
+    } catch (err) {
+      console.warn('logAuditAction error:', err);
+    }
+  }, [currentUser]);
+
+  // Rollback audit action (Undo changes)
+  const rollbackAuditAction = useCallback(async (logEntry) => {
+    if (!logEntry) throw new Error('Không có thông tin bản ghi lịch sử.');
+    const [
+      logId, timeStr, userDisplay, userRole, phanHe, thaoTac, maDon, targetObject, summary,
+      duLieuCuRaw, duLieuMoiRaw, trangThaiKhoiPhuc
+    ] = Array.isArray(logEntry) ? logEntry : [];
+
+    if (trangThaiKhoiPhuc && trangThaiKhoiPhuc.toString().startsWith('ĐÃ_KHÔI_PHỤC')) {
+      throw new Error('Bản ghi này đã được khôi phục trước đó.');
+    }
+
+    let oldData = null;
+    try {
+      oldData = typeof duLieuCuRaw === 'string' ? JSON.parse(duLieuCuRaw) : duLieuCuRaw;
+    } catch (e) {
+      console.error('Failed to parse duLieuCu:', e);
+    }
+
+    if (!oldData) {
+      throw new Error('Không tìm thấy dữ liệu cũ để khôi phục.');
+    }
+
+    const normPhanHe = (phanHe || '').toString().trim().toUpperCase();
+    const moduleKey = normPhanHe === 'NHẬP' ? 'nhap' : (normPhanHe === 'XUẤT' ? 'xuat' : null);
+
+    if (!moduleKey) {
+      throw new Error(`Chưa hỗ trợ khôi phục tự động cho phân hệ: ${phanHe}`);
+    }
+
+    // 1. Perform restore operations
+    if (thaoTac === 'XÓA_DÒNG') {
+      const rowToRestore = Array.isArray(oldData) ? oldData : (oldData.rowValues || oldData);
+      await appendRows(moduleKey, [rowToRestore]);
+    } else if (thaoTac === 'XÓA_ĐƠN') {
+      const rowsToRestore = Array.isArray(oldData) ? oldData : [oldData];
+      await appendRows(moduleKey, rowsToRestore);
+    } else if (thaoTac === 'CHỈNH_SỬA') {
+      if (Array.isArray(oldData)) {
+        if (maDon) {
+          await deleteOrder(moduleKey, maDon);
+        }
+        await appendRows(moduleKey, oldData);
+      } else if (oldData._sheetRow && oldData.rowValues) {
+        await updateRow(moduleKey, oldData._sheetRow, oldData.rowValues);
+      }
+    } else if (thaoTac === 'THÊM_MỚI') {
+      if (maDon) {
+        await deleteOrder(moduleKey, maDon);
+      }
+    }
+
+    // 2. Refresh module data
+    await fetchModule(moduleKey, true);
+
+    // 3. Update local LICH_SU status
+    const restoreNote = `ĐÃ_KHÔI_PHỤC (${new Date().toLocaleString('vi-VN')} bởi ${currentUser?.name || currentUser?.ho_ten || currentUser?.id || 'Admin'})`;
+
+    setLichSuData(prev => {
+      const current = Array.isArray(prev) ? prev : [];
+      const updated = current.map(item => {
+        if (item[0] === logId) {
+          const cloned = [...item];
+          cloned[11] = restoreNote;
+          return cloned;
+        }
+        return item;
+      });
+      setLocalItem(STORAGE_KEYS.LICHSU_CACHE, updated);
+      return updated;
+    });
+
+    // 4. Log rollback audit record
+    await logAuditAction({
+      moduleName: phanHe,
+      actionType: 'KHÔI_PHỤC',
+      orderId: maDon,
+      targetObject: targetObject || '',
+      summary: `Đã khôi phục tác vụ [${thaoTac}] của đơn ${maDon} (${summary})`
+    });
+
+    return true;
+  }, [currentUser, appendRows, deleteOrder, updateRow, fetchModule, logAuditAction]);
+
   return (
     <DataContext.Provider
       value={{
@@ -551,6 +710,7 @@ export function DataProvider({ children }) {
         cngiaspData,
         lenDonData,
         caidatData,
+        lichSuData,
         aggregatesData,
         nppProductIdsData,
         fetchAggregatesData,
@@ -561,6 +721,7 @@ export function DataProvider({ children }) {
         getModuleData,
         fetchUsersData,
         fetchModule,
+        fetchLichSuData,
         fetchAllData,
         appendRow,
         appendRows,
@@ -574,7 +735,9 @@ export function DataProvider({ children }) {
         getLatestPriceMap,
         getPriceAtDate,
         syncProductPriceToLenDon,
-        syncAllPricesToLenDon
+        syncAllPricesToLenDon,
+        logAuditAction,
+        rollbackAuditAction
       }}
     >
       {children}

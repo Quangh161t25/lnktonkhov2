@@ -273,6 +273,9 @@ export function AuthProvider({ children }) {
         userWarehouses: { ...(prev?.userWarehouses || {}), ...(parsedPermissions.userWarehouses || {}) },
         dataScopes: { ...(prev?.dataScopes || {}), ...(parsedPermissions.dataScopes || {}) }
       });
+      if (JSON.stringify(merged) === JSON.stringify(prev)) {
+        return prev;
+      }
       setLocalItem(STORAGE_KEYS.PERMISSIONS, merged);
       return merged;
     });

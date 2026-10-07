@@ -8,8 +8,10 @@ import { ExcelUploadModal } from '../../common/ExcelUploadModal';
 import { BarcodeScannerModal } from '../../common/BarcodeScannerModal';
 import { OcrOrderModal } from '../../common/OcrOrderModal';
 import { ColumnManagerModal } from '../../common/ColumnManagerModal';
+import { HistoryModal } from '../../common/HistoryModal';
 import { useColumnManager } from '../../../hooks/useColumnManager';
 import { exportToExcel, downloadModuleTemplate } from '../../../services/excelService';
+import { diffOrderChanges } from '../../../services/auditLogService';
 import { formatNumber, formatCurrency, formatDateVN, parseSimpleSheetDate, cleanNumber, matchesSearch } from '../../../utils/formatters';
 import { 
   Plus, 
@@ -24,7 +26,8 @@ import {
   Layers,
   Building2,
   SlidersHorizontal,
-  RotateCw
+  RotateCw,
+  History
 } from 'lucide-react';
 
 const DEFAULT_NHAP_COLUMNS = [
@@ -49,7 +52,7 @@ const LOAI_HINH_OPTIONS = [
 ];
 
 export function NhapModule() {
-  const { nhapData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, fetchUsersData, loadingModules } = useData();
+  const { nhapData, appendRows, updateRow, deleteRow, deleteOrder, fetchModule, fetchUsersData, loadingModules, logAuditAction } = useData();
   const { currentUser, hasActionPermission, canAccessWarehouse } = useAuth();
   const { getWarehouseOptions, getAllSystemWarehouses } = useSettings();
 
@@ -104,6 +107,8 @@ export function NhapModule() {
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
   const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [selectedHistoryMdh, setSelectedHistoryMdh] = useState('');
 
   // Autocomplete lists for filters: Partner list with Mã + Tên NCC/KH
   const uniquePartnerList = useMemo(() => {
@@ -258,6 +263,16 @@ export function NhapModule() {
     if (window.confirm(`Bạn có chắc chắn muốn xóa dòng: ${desc}?`)) {
       try {
         await deleteRow('nhap', sheetRow);
+        if (logAuditAction) {
+          await logAuditAction({
+            moduleName: 'NHẬP',
+            actionType: 'XÓA_DÒNG',
+            orderId: row[3] || '',
+            targetObject: `${row[6]} - ${row[7] || ''}`,
+            summary: `Xóa dòng sản phẩm ${row[6]} (${row[7] || ''}) thuộc đơn ${row[3]} (SL: ${formatNumber(row[8])}, Tiền: ${formatCurrency(row[10])})`,
+            oldData: row
+          });
+        }
         await fetchModule('nhap');
       } catch (err) {
         alert("Lỗi khi xóa dòng: " + err.message);
@@ -269,7 +284,26 @@ export function NhapModule() {
   const handleDeleteOrder = async (mdh) => {
     if (!mdh) return;
     try {
+      // Find all rows belonging to this order to preserve snapshot in oldData
+      const rowsOfOrder = (nhapData || []).slice(1)
+        .map((r, idx) => {
+          const item = [...r];
+          item._sheetRow = idx + 2;
+          return item;
+        })
+        .filter(r => (r[3] || '').toString().trim().toLowerCase() === mdh.toLowerCase());
+
       await deleteOrder('nhap', mdh);
+      if (logAuditAction) {
+        await logAuditAction({
+          moduleName: 'NHẬP',
+          actionType: 'XÓA_ĐƠN',
+          orderId: mdh,
+          targetObject: `Đơn hàng ${mdh} (${rowsOfOrder.length} sản phẩm)`,
+          summary: `Xóa toàn bộ đơn nhập ${mdh} gồm ${rowsOfOrder.length} sản phẩm`,
+          oldData: rowsOfOrder
+        });
+      }
       await fetchModule('nhap');
     } catch (err) {
       alert("Lỗi khi xóa đơn: " + err.message);
@@ -279,6 +313,10 @@ export function NhapModule() {
   // Handle saving order from Drawer
   const handleSaveOrder = async ({ rowsToSave, deletedSheetRows }) => {
     try {
+      const isEditing = Boolean(editOrderRows && editOrderRows.length > 0);
+      const mdh = (rowsToSave[0]?.rowValues[3] || '').toString().trim();
+      const partner = (rowsToSave[0]?.rowValues[5] || rowsToSave[0]?.rowValues[4] || '').toString().trim();
+
       // 1. Update existing sheet rows
       const existingUpdates = rowsToSave.filter(item => item._sheetRow && item._sheetRow > 1);
       for (const item of existingUpdates) {
@@ -301,7 +339,39 @@ export function NhapModule() {
         }
       }
 
-      // 4. Refresh module data
+      // 4. Record Audit Log
+      const newSavedRows = rowsToSave.map(it => it.rowValues);
+      if (logAuditAction) {
+        if (isEditing) {
+          const diffResult = diffOrderChanges({
+            oldRows: editOrderRows,
+            newRows: newSavedRows,
+            moduleType: 'NHẬP'
+          });
+          await logAuditAction({
+            moduleName: 'NHẬP',
+            actionType: 'CHỈNH_SỬA',
+            orderId: mdh,
+            targetObject: partner,
+            summary: `Chỉnh sửa đơn nhập ${mdh}: ${diffResult.summary}`,
+            oldData: editOrderRows,
+            newData: newSavedRows
+          });
+        } else {
+          const totalQty = newSavedRows.reduce((acc, r) => acc + (cleanNumber(r[8]) || 0), 0);
+          const totalAmount = newSavedRows.reduce((acc, r) => acc + (cleanNumber(r[10]) || 0), 0);
+          await logAuditAction({
+            moduleName: 'NHẬP',
+            actionType: 'THÊM_MỚI',
+            orderId: mdh,
+            targetObject: partner,
+            summary: `Tạo mới đơn nhập ${mdh} (${partner}): ${newSavedRows.length} sản phẩm, Tổng SL: ${formatNumber(totalQty)}, Tổng tiền: ${formatCurrency(totalAmount)}`,
+            newData: newSavedRows
+          });
+        }
+      }
+
+      // 5. Refresh module data
       await fetchModule('nhap');
     } catch (err) {
       console.error("handleSaveOrder error:", err);
@@ -326,6 +396,16 @@ export function NhapModule() {
       const dataRows = excelRows.slice(1).filter(r => r.some(c => c !== ''));
       if (dataRows.length > 0) {
         await appendRows('nhap', dataRows);
+        if (logAuditAction) {
+          await logAuditAction({
+            moduleName: 'NHẬP',
+            actionType: 'IMPORT_EXCEL',
+            orderId: `EXCEL_${Date.now()}`,
+            targetObject: `File Excel (${dataRows.length} dòng)`,
+            summary: `Import dữ liệu từ file Excel vào danh sách Nhập: ${dataRows.length} dòng`,
+            newData: dataRows
+          });
+        }
         await fetchModule('nhap');
         alert(`Đã nhập thành công ${dataRows.length} dòng.`);
       }
@@ -423,6 +503,18 @@ export function NhapModule() {
             >
               <FileText className="w-3.5 h-3.5 text-indigo-600" />
               Quét OCR
+            </button>
+
+            <button
+              onClick={() => {
+                setSelectedHistoryMdh('');
+                setIsHistoryModalOpen(true);
+              }}
+              className="px-2.5 py-1.5 bg-amber-50 text-amber-800 font-bold rounded-lg text-xs hover:bg-amber-100 transition flex items-center gap-1.5 border border-amber-200 shadow-sm"
+              title="Xem nhật ký lịch sử nhập kho"
+            >
+              <History className="w-3.5 h-3.5 text-amber-700" />
+              Lịch sử nhập
             </button>
 
             <button
@@ -734,6 +826,17 @@ export function NhapModule() {
                               <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 whitespace-nowrap ${alignClass}`}>
                                 <div className="flex items-center justify-center gap-1">
                                   <button
+                                    onClick={() => {
+                                      setSelectedHistoryMdh(row[3]);
+                                      setIsHistoryModalOpen(true);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition"
+                                    title={`Xem lịch sử thay đổi của đơn ${row[3]}`}
+                                  >
+                                    <History className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
                                     onClick={() => handleEditRow(row)}
                                     className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
                                     title={`Chỉnh sửa đơn nhập ${row[3]}`}
@@ -836,6 +939,18 @@ export function NhapModule() {
         onApplyItems={() => {
           setIsDrawerOpen(true);
         }}
+      />
+
+      {/* Audit History Modal */}
+      <HistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => {
+          setIsHistoryModalOpen(false);
+          setSelectedHistoryMdh('');
+        }}
+        defaultModule="NHẬP"
+        defaultOrderId={selectedHistoryMdh}
+        title="Lịch sử Nhập kho"
       />
     </div>
   );

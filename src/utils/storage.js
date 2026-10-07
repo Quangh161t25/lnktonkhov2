@@ -14,7 +14,8 @@ export const STORAGE_KEYS = {
   LENDON_CACHE: 'erp_lendon_cache',
   USERS_CACHE: 'erp_users_cache',
   FORECAST_PARAMS: 'erp_forecast_params',
-  CAIDAT_CACHE: 'erp_caidat_cache'
+  CAIDAT_CACHE: 'erp_caidat_cache',
+  LICHSU_CACHE: 'erp_lichsu_cache'
 };
 
 export function getLocalItem(key, defaultValue = null) {

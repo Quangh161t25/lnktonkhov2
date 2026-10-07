@@ -589,9 +589,13 @@ export default async function handler(req, res) {
           item.tonCuoi = item.tonDau + item.tongNhap - item.tongXuat;
         }
 
-        rawAggregates = { aggregatesMap, nppExportMap };
-        cachedAggregatesResult = rawAggregates;
-        cachedAggregatesTime = now;
+        if (Object.keys(aggregatesMap).length > 0 || !cachedAggregatesResult) {
+          rawAggregates = { aggregatesMap, nppExportMap };
+          cachedAggregatesResult = rawAggregates;
+          cachedAggregatesTime = now;
+        } else {
+          rawAggregates = cachedAggregatesResult;
+        }
       }
 
       let nppProductIds = [];

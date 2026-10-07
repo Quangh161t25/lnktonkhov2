@@ -3,6 +3,7 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useSettings } from '../../../context/SettingsContext';
 import { SanphamDrawer } from './SanphamDrawer';
+import { ProductDetailModal } from './ProductDetailModal';
 import { Pagination } from '../../common/Pagination';
 import { ExcelUploadModal } from '../../common/ExcelUploadModal';
 import { ColumnManagerModal } from '../../common/ColumnManagerModal';
@@ -81,6 +82,7 @@ export function SanphamModule({ onNavigateWithFilter }) {
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editRow, setEditRow] = useState(null);
+  const [detailProductRow, setDetailProductRow] = useState(null);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
 
   // Always fetch latest product & aggregated stock data on mount (avoiding raw sales/purchase downloads)
@@ -89,7 +91,7 @@ export function SanphamModule({ onNavigateWithFilter }) {
     const nppId = roleKey === 'NPP' ? currentUser?.id : '';
     const nppName = roleKey === 'NPP' ? currentUser?.name : '';
     fetchAggregatesData({ nppId, nppName });
-  }, [fetchModule, fetchAggregatesData, roleKey, currentUser]);
+  }, [fetchModule, fetchAggregatesData, roleKey, currentUser?.id, currentUser?.name]);
 
   const handleRefreshAll = async () => {
     const nppId = roleKey === 'NPP' ? currentUser?.id : '';
@@ -460,7 +462,12 @@ export function SanphamModule({ onNavigateWithFilter }) {
                   const imgUrl = row[3] || '';
 
                   return (
-                    <tr key={idx} className="hover:bg-emerald-50/30 transition">
+                    <tr 
+                      key={idx} 
+                      onClick={() => setDetailProductRow(row)}
+                      className="hover:bg-blue-50/40 transition cursor-pointer group"
+                      title="Bấm để xem bảng chi tiết từng kho & lịch sử nhập xuất từng ngày"
+                    >
                       {visibleColumns
                         .filter(col => roleKey !== 'NPP' || !['ton_dau', 'tong_nhap', 'tong_xuat'].includes(col.key))
                         .map(col => {
@@ -489,14 +496,14 @@ export function SanphamModule({ onNavigateWithFilter }) {
 
                             case 'id_sp':
                               return (
-                                <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 whitespace-nowrap font-extrabold text-slate-800 ${alignClass} ${isCustomUpper ? 'uppercase' : ''}`}>
+                                <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 whitespace-nowrap font-extrabold text-blue-600 group-hover:underline ${alignClass} ${isCustomUpper ? 'uppercase' : ''}`}>
                                   {row[0]}
                                 </td>
                               );
 
                             case 'ten_sp':
                               return (
-                                <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 font-semibold text-slate-700 ${alignClass} ${isCustomBold ? 'font-bold' : ''} ${isCustomUpper ? 'uppercase' : ''}`}>
+                                <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 font-semibold text-slate-700 group-hover:text-blue-700 ${alignClass} ${isCustomBold ? 'font-bold' : ''} ${isCustomUpper ? 'uppercase' : ''}`}>
                                   {row[1]}
                                 </td>
                               );
@@ -544,19 +551,28 @@ export function SanphamModule({ onNavigateWithFilter }) {
 
                             case 'actions':
                               return (
-                                <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 whitespace-nowrap text-center ${alignClass}`}>
+                                <td 
+                                  key={col.key} 
+                                  style={widthStyle} 
+                                  className={`py-1.5 px-2.5 whitespace-nowrap text-center ${alignClass}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <div className="flex items-center justify-center gap-1.5">
                                     <button
-                                      onClick={() => handleViewWarehouseStock(row[0])}
-                                      className="p-1 text-slate-400 hover:text-indigo-600 transition"
-                                      title="Xem tồn chi tiết theo từng kho"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDetailProductRow(row);
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-blue-600 transition"
+                                      title="Xem chi tiết tồn theo từng kho & nhập xuất từng ngày"
                                     >
                                       <ExternalLink className="w-4 h-4" />
                                     </button>
                                     {hasActionPermission('sanpham.manage') && (
                                       <>
                                         <button
-                                          onClick={() => {
+                                          onClick={(e) => {
+                                            e.stopPropagation();
                                             setEditRow(row);
                                             setIsDrawerOpen(true);
                                           }}
@@ -566,7 +582,10 @@ export function SanphamModule({ onNavigateWithFilter }) {
                                           <Edit3 className="w-4 h-4" />
                                         </button>
                                         <button
-                                          onClick={() => handleDeleteProduct(row)}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteProduct(row);
+                                          }}
                                           className="p-1 text-slate-400 hover:text-red-600 transition"
                                           title="Xóa sản phẩm"
                                         >
@@ -637,6 +656,13 @@ export function SanphamModule({ onNavigateWithFilter }) {
         onClose={() => setIsExcelModalOpen(false)}
         moduleName="sanpham"
         onImportRows={handleImportExcelRows}
+      />
+
+      {/* Product Detail Modal (Stock breakdown per warehouse & daily transactions) */}
+      <ProductDetailModal
+        isOpen={Boolean(detailProductRow)}
+        onClose={() => setDetailProductRow(null)}
+        productRow={detailProductRow}
       />
     </div>
   );

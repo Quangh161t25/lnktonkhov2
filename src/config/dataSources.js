@@ -66,5 +66,11 @@ export const SIMPLE_SHEET_MODULES = {
     range: 'A1:H1000',
     cacheKey: 'erp_caidat_cache',
     columns: ['id', 'ten_thiet_lap', 'gia_tri', 'nhom', 'kieu_du_lieu', 'mo_ta', 'ngay_cap_nhat', 'nguoi_cap_nhat']
+  },
+  lichsu: {
+    sheetName: () => CONFIG.lichSuSheetName || 'LICH_SU',
+    range: 'A1:L50000',
+    cacheKey: 'erp_lichsu_cache',
+    columns: ['id', 'thoi_gian', 'nguoi_dung', 'vai_tro', 'phan_he', 'thao_tac', 'ma_don', 'doi_tuong', 'tom_tat', 'du_lieu_cu', 'du_lieu_moi', 'trang_thai_khoi_phuc']
   }
 };

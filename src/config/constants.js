@@ -15,6 +15,7 @@ export const CONFIG = {
   caiDatSheetName: "CAI_DAT",
   cngiaspSheetName: "CN_GIA_SP",
   lenDonSheetName: "LEN_DON",
+  lichSuSheetName: "LICH_SU",
   permissionsFile: "permissions.json"
 };
 
