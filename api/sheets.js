@@ -229,27 +229,35 @@ const AGGREGATES_CACHE_TTL = 15000; // 15 seconds memory cache
 
 let cachedRawSheets = null;
 let cachedRawSheetsTime = 0;
-const RAW_SHEETS_CACHE_TTL = 30000; // 30 seconds memory cache
+const RAW_SHEETS_CACHE_TTL = 120000; // 2 minutes memory cache
 
 async function getRawOrderSheets(force = false) {
   const now = Date.now();
   if (!force && cachedRawSheets && (now - cachedRawSheetsTime < RAW_SHEETS_CACHE_TTL)) {
     return cachedRawSheets;
   }
-  const [spKhoRes, nhapRes, xuatRes, transferRes] = await Promise.all([
-    callSheetFetch('DS_SP_KHO', 'A1:F50000').catch(() => []),
-    callSheetFetch('NHAP_CT', 'A1:Q60000').catch(() => []),
-    callSheetFetch('XUAT_CT', 'A1:O60000').catch(() => []),
-    callSheetFetch('CHUYEN_KHO_CT', 'A1:K60000').catch(() => [])
-  ]);
-  const spRows = Array.isArray(spKhoRes) ? spKhoRes : (spKhoRes?.values || []);
-  const nhapRows = Array.isArray(nhapRes) ? nhapRes : (nhapRes?.values || []);
-  const xuatRows = Array.isArray(xuatRes) ? xuatRes : (xuatRes?.values || []);
-  const transferRows = Array.isArray(transferRes) ? transferRes : (transferRes?.values || []);
+  try {
+    const [spKhoRes, nhapRes, xuatRes, transferRes] = await Promise.all([
+      callSheetFetch('DS_SP_KHO', 'A1:F50000').catch(err => { console.warn('Fetch DS_SP_KHO:', err.message); return null; }),
+      callSheetFetch('NHAP_CT', 'A1:Q60000').catch(err => { console.warn('Fetch NHAP_CT:', err.message); return null; }),
+      callSheetFetch('XUAT_CT', 'A1:O60000').catch(err => { console.warn('Fetch XUAT_CT:', err.message); return null; }),
+      callSheetFetch('CHUYEN_KHO_CT', 'A1:K60000').catch(err => { console.warn('Fetch CHUYEN_KHO_CT:', err.message); return null; })
+    ]);
 
-  cachedRawSheets = { spRows, nhapRows, xuatRows, transferRows };
-  cachedRawSheetsTime = now;
-  return cachedRawSheets;
+    const spRows = Array.isArray(spKhoRes) ? spKhoRes : (cachedRawSheets?.spRows || []);
+    const nhapRows = Array.isArray(nhapRes) ? nhapRes : (cachedRawSheets?.nhapRows || []);
+    const xuatRows = Array.isArray(xuatRes) ? xuatRes : (cachedRawSheets?.xuatRows || []);
+    const transferRows = Array.isArray(transferRes) ? transferRes : (cachedRawSheets?.transferRows || []);
+
+    if (spRows.length > 0 || nhapRows.length > 0 || xuatRows.length > 0 || !cachedRawSheets) {
+      cachedRawSheets = { spRows, nhapRows, xuatRows, transferRows };
+      cachedRawSheetsTime = now;
+    }
+    return cachedRawSheets;
+  } catch (err) {
+    if (cachedRawSheets) return cachedRawSheets;
+    throw err;
+  }
 }
 
 function encryptPayload(dataObj) {
@@ -700,6 +708,7 @@ export default async function handler(req, res) {
           }
           transactions.push({
             id: `NHAP_${row[0] || idx}`,
+            _origIdx: idx,
             date: row[1] || '',
             type: 'NHẬP',
             delta: slg,
@@ -729,6 +738,7 @@ export default async function handler(req, res) {
           }
           transactions.push({
             id: `XUAT_${row[0] || idx}`,
+            _origIdx: idx,
             date: row[1] || '',
             type: 'XUẤT',
             delta: -slg,
@@ -763,6 +773,7 @@ export default async function handler(req, res) {
           }
           transactions.push({
             id: `TRANSFER_${row[0] || idx}`,
+            _origIdx: idx,
             date: row[1] || '',
             type: 'CHUYỂN KHO',
             delta: 0,

@@ -309,7 +309,14 @@ export function ProductDetailModal({
       }
     });
 
-    return list;
+    const rawList = (serverDetail?.transactions && serverDetail.transactions.length > 0)
+      ? serverDetail.transactions
+      : list;
+
+    return rawList.map((item, idx) => ({
+      ...item,
+      _origIdx: item._origIdx ?? idx
+    }));
   }, [cleanId, serverDetail, nhapData, xuatData, transferData]);
 
   // 3. Calculate Running Balance ("Số lượng còn lại mỗi khi nhập xuất")
@@ -336,18 +343,28 @@ export function ProductDetailModal({
       return true;
     });
 
-    // Sort chronologically ascending (oldest first) to compute running balance
+    // 1. Sort chronologically ascending (oldest first) to compute running balance
+    // Compare dates: timeA - timeB
+    // If same date: NHẬP (hàng về) xảy ra trước XUẤT (xuất bán)
+    // If same date & same type: giữ nguyên thứ tự phát sinh ban đầu (_origIdx)
     const sortedAsc = [...scopedList].sort((a, b) => {
       const dateA = parseSimpleSheetDate(a.date);
       const dateB = parseSimpleSheetDate(b.date);
       const timeA = Number.isNaN(dateA.getTime()) ? 0 : dateA.getTime();
       const timeB = Number.isNaN(dateB.getTime()) ? 0 : dateB.getTime();
-      return timeA - timeB;
+      if (timeA !== timeB) return timeA - timeB;
+
+      const typeRank = { 'NHẬP': 1, 'CHUYỂN KHO': 2, 'XUẤT': 3 };
+      const rankA = typeRank[a.type] || 2;
+      const rankB = typeRank[b.type] || 2;
+      if (rankA !== rankB) return rankA - rankB;
+
+      return (a._origIdx ?? 0) - (b._origIdx ?? 0);
     });
 
-    // Compute running balance after each transaction
+    // 2. Compute running balance step-by-step in chronological ascending order
     let currentBalance = baselineTonDau;
-    sortedAsc.forEach(tx => {
+    sortedAsc.forEach((tx, idx) => {
       let delta = 0;
       if (tx.type === 'NHẬP') {
         delta = tx.slg;
@@ -364,16 +381,13 @@ export function ProductDetailModal({
       }
       currentBalance += delta;
       tx.balanceAfter = currentBalance;
+      tx._chronoOrder = idx;
     });
 
-    // Return sorted descending (newest first for standard display)
-    return sortedAsc.sort((a, b) => {
-      const dateA = parseSimpleSheetDate(a.date);
-      const dateB = parseSimpleSheetDate(b.date);
-      const timeA = Number.isNaN(dateA.getTime()) ? 0 : dateA.getTime();
-      const timeB = Number.isNaN(dateB.getTime()) ? 0 : dateB.getTime();
-      return timeB - timeA;
-    });
+    // 3. For table display: return in reverse order (newest on top)
+    // Bằng cách reverse sortedAsc, các giao dịch trong CÙNG NGÀY cũng được đảo đúng trật tự:
+    // Giao dịch phát sinh sau cùng sẽ ở trên cùng (hiển thị số lượng còn lại cuối cùng chính xác)!
+    return [...sortedAsc].reverse();
   }, [allTransactions, selectedKho, overallTotals.tonDau, warehouseBreakdown]);
 
   // Filtered transactions for view (applying Type, Date range, Search)
