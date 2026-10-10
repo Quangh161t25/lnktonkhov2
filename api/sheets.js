@@ -927,6 +927,11 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: 'Thông số values phải là mảng dữ liệu (Array).' });
       }
 
+      const cleanSheet = rawSheet.replace(/['"]/g, '').split('!')[0].trim().toUpperCase();
+      if (cleanSheet === 'DOI_SOAT') {
+        return res.status(403).json({ success: false, error: 'Bảng DOI_SOAT sử dụng công thức tự động cho Mã và Tên SP, không cho phép append dòng.' });
+      }
+
       cachedAggregatesResult = null; // Invalidate cached stock aggregates
       const result = await callSheetAppend(rawSheet, values, valueInputOption);
       return res.status(200).json(encryptPayload({ success: true, result }));

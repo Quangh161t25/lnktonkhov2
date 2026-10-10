@@ -8,7 +8,15 @@ export function ExcelUploadModal({ isOpen, onClose, moduleName, expectedColumns 
   const [previewRows, setPreviewRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [importMode, setImportMode] = useState('append'); // 'append' or 'replace'
+  const isDoisoat = moduleName?.toLowerCase() === 'doisoat';
+  const [importMode, setImportMode] = useState(isDoisoat ? 'replace' : 'append');
+
+  // Update default importMode if moduleName changes
+  React.useEffect(() => {
+    if (isDoisoat) {
+      setImportMode('replace');
+    }
+  }, [isDoisoat]);
 
   const handleFileChange = async (e) => {
     const selected = e.target.files?.[0];
@@ -53,7 +61,7 @@ export function ExcelUploadModal({ isOpen, onClose, moduleName, expectedColumns 
       onClose={onClose} 
       confirmOnClose={previewRows.length > 0}
       confirmMessage="Bạn có chắc chắn muốn hủy tải lên? Dữ liệu chưa nhập sẽ bị hủy."
-      title={`Tải lên Excel - ${moduleName?.toUpperCase()}`} 
+      title={isDoisoat ? "Tải lên số liệu tồn MISA (Excel)" : `Tải lên Excel - ${moduleName?.toUpperCase()}`} 
       maxWidth="max-w-3xl"
     >
       <div className="space-y-4">
@@ -70,7 +78,11 @@ export function ExcelUploadModal({ isOpen, onClose, moduleName, expectedColumns 
             <p className="text-xs font-bold text-slate-700">
               {file ? file.name : 'Nhấn để chọn hoặc kéo thả file Excel (.xlsx, .xls, .csv)'}
             </p>
-            <p className="text-[11px] text-slate-400">Hệ thống sẽ đọc dòng đầu tiên làm tiêu đề</p>
+            <p className="text-[11px] text-slate-400">
+              {isDoisoat 
+                ? 'Hệ thống sẽ đối chiếu Mã SP và chỉ cập nhật cột Tồn MISA (giữ nguyên công thức Mã & Tên SP)' 
+                : 'Hệ thống sẽ đọc dòng đầu tiên làm tiêu đề'}
+            </p>
           </div>
         </div>
 
@@ -85,28 +97,34 @@ export function ExcelUploadModal({ isOpen, onClose, moduleName, expectedColumns 
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-slate-600">
               <span className="font-bold">Xem trước: {previewRows.length - 1} dòng dữ liệu</span>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="importMode"
-                    value="append"
-                    checked={importMode === 'append'}
-                    onChange={(e) => setImportMode(e.target.value)}
-                  />
-                  <span>Thêm tiếp vào cuối</span>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="importMode"
-                    value="replace"
-                    checked={importMode === 'replace'}
-                    onChange={(e) => setImportMode(e.target.value)}
-                  />
-                  <span className="text-red-600 font-medium">Ghi đè toàn bộ</span>
-                </label>
-              </div>
+              {isDoisoat ? (
+                <div className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-semibold flex items-center gap-1.5">
+                  <span>Chỉ điền cột Tồn MISA (bảo toàn công thức Mã & Tên SP)</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      value="append"
+                      checked={importMode === 'append'}
+                      onChange={(e) => setImportMode(e.target.value)}
+                    />
+                    <span>Thêm tiếp vào cuối</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      value="replace"
+                      checked={importMode === 'replace'}
+                      onChange={(e) => setImportMode(e.target.value)}
+                    />
+                    <span className="text-red-600 font-medium">Ghi đè toàn bộ</span>
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* Table Preview */}
@@ -150,7 +168,9 @@ export function ExcelUploadModal({ isOpen, onClose, moduleName, expectedColumns 
                 onClick={handleConfirmImport}
                 className="flex-[2] py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 shadow-sm transition"
               >
-                Xác nhận nhập {previewRows.length - 1} dòng
+                {isDoisoat 
+                  ? `Xác nhận cập nhật tồn MISA (${previewRows.length - 1} dòng)` 
+                  : `Xác nhận nhập ${previewRows.length - 1} dòng`}
               </button>
             </div>
           </div>

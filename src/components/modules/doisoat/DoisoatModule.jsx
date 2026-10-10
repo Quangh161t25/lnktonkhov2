@@ -7,6 +7,8 @@ import { ExcelUploadModal } from '../../common/ExcelUploadModal';
 import { ColumnManagerModal } from '../../common/ColumnManagerModal';
 import { useColumnManager } from '../../../hooks/useColumnManager';
 import { exportToExcel, downloadModuleTemplate } from '../../../services/excelService';
+import { updateSheetRange } from '../../../services/googleSheetsService';
+import { CONFIG } from '../../../config/constants';
 import { calculateProductAggregates } from '../../../utils/calculations';
 import { formatNumber, cleanNumber, matchesSearch } from '../../../utils/formatters';
 import { 
@@ -178,11 +180,23 @@ export function DoisoatModule() {
       if (sheetRow && sheetRow > 1) {
         await updateRow('doisoat', sheetRow, rowsToSave[0]);
       } else {
-        for (const r of rowsToSave) {
-          await appendRow('doisoat', r);
+        // If adding MISA stock for a product, find its existing sheet row in doisoatData (driven by DS_SP)
+        const prodId = (rowsToSave[0]?.[0] || '').toString().trim().toLowerCase();
+        let targetSheetRow = null;
+        (doisoatData || []).slice(1).forEach((r, idx) => {
+          if ((r[0] || '').toString().trim().toLowerCase() === prodId) {
+            targetSheetRow = idx + 2;
+          }
+        });
+
+        if (targetSheetRow) {
+          await updateRow('doisoat', targetSheetRow, rowsToSave[0]);
+        } else {
+          alert(`Mã sản phẩm "${rowsToSave[0]?.[0]}" không tồn tại trong danh mục sản phẩm (DS_SP). Bảng đối soát chỉ theo dõi các sản phẩm đã có trong hệ thống.`);
+          return;
         }
       }
-      await fetchModule('doisoat');
+      await fetchModule('doisoat', true);
     } catch (err) {
       alert("Lỗi khi lưu đối soát MISA: " + err.message);
     }
@@ -205,17 +219,117 @@ export function DoisoatModule() {
   };
 
   const handleImportExcelRows = async (excelRows) => {
+    if (!excelRows || excelRows.length <= 1) return;
+
     try {
+      const header = excelRows[0] || [];
+      // 1. Detect Column indices from Excel headers
+      let idCol = header.findIndex(h => {
+        const str = String(h || '').trim().toLowerCase();
+        return str === 'id' || str === 'ma_sp' || str === 'mã sp' || str === 'mã sản phẩm' || str === 'sku' || str === 'mã hàng';
+      });
+      if (idCol === -1) idCol = 0;
+
+      let misaCol = header.findIndex(h => {
+        const str = String(h || '').trim().toLowerCase();
+        return str.includes('misa') || str.includes('ton_misa') || str.includes('tồn') || str.includes('slg') || str.includes('số lượng');
+      });
+      if (misaCol === -1) misaCol = (header.length > 2 ? 2 : 1);
+
+      // 2. Build map of uploaded MISA stock from Excel
+      const excelMap = new Map();
       const dataRows = excelRows.slice(1);
-      for (const row of dataRows) {
-        if (row.some(c => c !== '')) {
-          await appendRow('doisoat', row);
+      dataRows.forEach(row => {
+        if (!row || !row.some(c => c !== '')) return;
+        const rawId = String(row[idCol] || '').trim();
+        if (!rawId) return;
+        const qty = cleanNumber(row[misaCol]) || 0;
+        excelMap.set(rawId.toLowerCase(), qty);
+      });
+
+      if (excelMap.size === 0) {
+        alert("Không tìm thấy dữ liệu hợp lệ trong file Excel.");
+        return;
+      }
+
+      // 3. Match against current products in DOI_SOAT
+      const currentRows = doisoatData || [];
+      if (currentRows.length <= 1) {
+        alert("Chưa tải được danh mục sản phẩm từ sheet DOI_SOAT. Vui lòng bấm 'Làm mới' và thử lại.");
+        return;
+      }
+
+      // Find last valid product row in DOI_SOAT (Col A has product ID)
+      let lastValidIdx = 0;
+      for (let i = 1; i < currentRows.length; i++) {
+        const idVal = String(currentRows[i]?.[0] || '').trim();
+        if (idVal) {
+          lastValidIdx = i;
         }
       }
-      await fetchModule('doisoat');
-      alert(`Đã nhập thành công ${dataRows.length} dòng.`);
+
+      if (lastValidIdx === 0) {
+        alert("Không tìm thấy danh sách sản phẩm trong sheet DOI_SOAT.");
+        return;
+      }
+
+      // 4. Construct updated values ONLY for Column C (ton_misa)
+      // Preserves existing ton_misa for items not in uploaded file
+      const colCValues = [];
+      let updatedMatchedCount = 0;
+      const matchedSet = new Set();
+
+      for (let i = 1; i <= lastValidIdx; i++) {
+        const rowId = String(currentRows[i]?.[0] || '').trim().toLowerCase();
+        if (excelMap.has(rowId)) {
+          const newQty = excelMap.get(rowId);
+          colCValues.push([newQty]);
+          updatedMatchedCount++;
+          matchedSet.add(rowId);
+        } else {
+          // Keep existing ton_misa value if product not present in this Excel upload
+          const currentQty = cleanNumber(currentRows[i]?.[2]) || 0;
+          colCValues.push([currentQty]);
+        }
+      }
+
+      const endSheetRow = lastValidIdx + 1;
+      const range = `C2:C${endSheetRow}`;
+
+      // 5. Send single range update ONLY to Column C of DOI_SOAT
+      // Column A and Column B are NEVER modified, 100% preserving =ArrayFormula(DS_SP!A1:B)
+      await updateSheetRange(CONFIG.reconciliationSheetName, range, colCValues);
+
+      // 6. Clear any leftover orphan numbers in Column C below the valid product table
+      if (currentRows.length > endSheetRow) {
+        const clearStartRow = endSheetRow + 1;
+        const clearEndRow = Math.max(currentRows.length + 50, clearStartRow + 100);
+        const clearRange = `C${clearStartRow}:C${clearEndRow}`;
+        const emptyC = new Array(clearEndRow - clearStartRow + 1).fill(['']);
+        await updateSheetRange(CONFIG.reconciliationSheetName, clearRange, emptyC).catch(err => {
+          console.warn("Dọn dẹp dòng thừa cuối sheet DOI_SOAT:", err);
+        });
+      }
+
+      // 7. Refresh module data
+      await fetchModule('doisoat', true);
+
+      // 8. User feedback
+      const unmatchedInSystem = [];
+      for (const [id] of excelMap.entries()) {
+        if (!matchedSet.has(id)) {
+          unmatchedInSystem.push(id);
+        }
+      }
+
+      let successMsg = `Đã cập nhật thành công số liệu tồn MISA cho ${updatedMatchedCount} sản phẩm (Chỉ điền cột Tồn MISA, bảo toàn tuyệt đối công thức cột Mã & Tên SP).`;
+      if (unmatchedInSystem.length > 0) {
+        successMsg += `\n\nCó ${unmatchedInSystem.length} mã trong Excel không tồn tại trong danh mục hệ thống: ${unmatchedInSystem.slice(0, 5).join(', ')}${unmatchedInSystem.length > 5 ? '...' : ''}`;
+      }
+      alert(successMsg);
     } catch (err) {
-      alert("Lỗi khi import Excel: " + err.message);
+      console.error("handleImportExcelRows error:", err);
+      alert("Lỗi khi cập nhật Excel vào DOI_SOAT: " + err.message);
     }
   };
 

@@ -119,20 +119,29 @@ export function DoisoatDrawer({ isOpen, onClose, editRow = null, onSaved }) {
       isOpen={isOpen}
       onClose={onClose}
       confirmOnClose={isDirty}
-      title={editRow ? "Cập nhật số liệu MISA" : "Thêm bản ghi đối soát MISA"}
+      title={editRow ? "Cập nhật tồn kho MISA" : "Thêm bản ghi đối soát MISA"}
       maxWidth="max-w-xl"
     >
       <div className="space-y-4">
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Mã sản phẩm (ID SP)</label>
-          <ProductSearchCell
-            value={idSp}
-            onChange={(val) => handleProductChange(val)}
-            onSelectProduct={(prod) => handleProductSelect(prod)}
-            productList={productList}
-            placeholder="TK-0348"
-            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold uppercase focus:ring-2 focus:ring-rose-500 outline-none"
-          />
+          {editRow ? (
+            <input
+              type="text"
+              value={idSp}
+              readOnly
+              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold uppercase bg-slate-50 text-slate-500 cursor-not-allowed outline-none"
+            />
+          ) : (
+            <ProductSearchCell
+              value={idSp}
+              onChange={(val) => handleProductChange(val)}
+              onSelectProduct={(prod) => handleProductSelect(prod)}
+              productList={productList}
+              placeholder="TK-0348"
+              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold uppercase focus:ring-2 focus:ring-rose-500 outline-none"
+            />
+          )}
         </div>
 
         <div>
@@ -140,10 +149,12 @@ export function DoisoatDrawer({ isOpen, onClose, editRow = null, onSaved }) {
           <input
             type="text"
             value={tenSp}
-            onChange={(e) => setTenSp(e.target.value)}
-            placeholder="Tên sản phẩm..."
-            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-rose-500 outline-none"
+            readOnly
+            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 text-slate-500 font-medium cursor-not-allowed outline-none"
           />
+          <p className="text-[10px] text-slate-400 mt-1 italic">
+            * Cột Mã SP & Tên SP được đồng bộ tự động từ Danh mục SP (DS_SP). Bạn chỉ cần cập nhật Tồn theo MISA.
+          </p>
         </div>
 
         <div>

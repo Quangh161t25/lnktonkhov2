@@ -267,6 +267,10 @@ export function DataProvider({ children }) {
 
   // Append multiple rows to a module
   const appendRows = async (moduleName, rowsArray) => {
+    if (moduleName === 'doisoat') {
+      console.warn('[DataContext] appendRows blocked for doisoat: DOI_SOAT uses formulas for column A&B.');
+      return;
+    }
     const config = SIMPLE_SHEET_MODULES[moduleName];
     if (!config || !rowsArray || rowsArray.length === 0) return;
 
@@ -281,6 +285,10 @@ export function DataProvider({ children }) {
 
   // Append new row to a module
   const appendRow = async (moduleName, rowValues) => {
+    if (moduleName === 'doisoat') {
+      console.warn('[DataContext] appendRow blocked for doisoat: DOI_SOAT uses formulas for column A&B.');
+      return;
+    }
     await appendRows(moduleName, [rowValues]);
   };
 
@@ -290,6 +298,28 @@ export function DataProvider({ children }) {
     if (!config || !sheetRowIndex || sheetRowIndex < 1) return;
 
     const sheetName = config.sheetName();
+
+    if (moduleName === 'doisoat') {
+      // DOI_SOAT: Column A & B are auto-populated by =ArrayFormula(DS_SP!A1:B).
+      // ONLY update Column C (ton_misa) to strictly preserve formula integrity!
+      const tonMisaVal = Array.isArray(rowValues)
+        ? (rowValues[2] !== undefined ? rowValues[2] : rowValues[0])
+        : rowValues;
+      const range = `C${sheetRowIndex}:C${sheetRowIndex}`;
+      await updateSheetRange(sheetName, range, [[tonMisaVal]]);
+
+      // Update local state preserving col A and B
+      const current = getModuleData(moduleName);
+      const updated = [...current];
+      if (updated[sheetRowIndex - 1]) {
+        const cloned = [...updated[sheetRowIndex - 1]];
+        cloned[2] = tonMisaVal;
+        updated[sheetRowIndex - 1] = cloned;
+        setModuleData(moduleName, updated);
+      }
+      return;
+    }
+
     const range = `A${sheetRowIndex}:Z${sheetRowIndex}`;
     await updateSheetRange(sheetName, range, [rowValues]);
 
