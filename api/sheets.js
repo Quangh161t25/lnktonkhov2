@@ -962,6 +962,34 @@ export default async function handler(req, res) {
       return res.status(200).json(encryptPayload({ success: true, result }));
     }
 
+    // 7. CLEAR SHEET RANGE
+    if (action === 'clear') {
+      if (req.method !== 'POST') {
+        return res.status(405).json({ success: false, error: 'Chỉ chấp nhận phương thức POST cho xóa range.' });
+      }
+      const { sheetName, range } = body || {};
+      const rawSheet = (sheetName || '').toString().trim();
+      const rawRange = (range || '').toString().trim();
+      if (!rawSheet || !rawRange) {
+        return res.status(400).json({ success: false, error: 'Thiếu thông số xóa.' });
+      }
+
+      const cleanSheet = rawSheet.replace(/['"]/g, '').split('!')[0].trim().toUpperCase();
+      if (cleanSheet === 'DSNV') {
+        return res.status(403).json({ success: false, error: 'Không cho phép clear trên DSNV.' });
+      }
+      if (cleanSheet === 'DOI_SOAT') {
+        const { startColIndex } = parseRangeInfo(rawRange);
+        if (startColIndex < 2) {
+          return res.status(403).json({ success: false, error: 'Chỉ cho phép xóa cột Tồn MISA (cột C) trên bảng DOI_SOAT để bảo vệ công thức.' });
+        }
+      }
+
+      cachedAggregatesResult = null; // Invalidate cached stock aggregates
+      const result = await callSheetClear(rawSheet, rawRange);
+      return res.status(200).json(encryptPayload({ success: true, result }));
+    }
+
     return res.status(400).json({ success: false, error: `Hành động không hợp lệ: ${action}` });
   } catch (err) {
     console.error("API /api/sheets error:", err);

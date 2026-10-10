@@ -7,7 +7,7 @@ import { ExcelUploadModal } from '../../common/ExcelUploadModal';
 import { ColumnManagerModal } from '../../common/ColumnManagerModal';
 import { useColumnManager } from '../../../hooks/useColumnManager';
 import { exportToExcel, downloadModuleTemplate } from '../../../services/excelService';
-import { updateSheetRange } from '../../../services/googleSheetsService';
+import { updateSheetRange, clearSheetRange } from '../../../services/googleSheetsService';
 import { CONFIG } from '../../../config/constants';
 import { calculateProductAggregates } from '../../../utils/calculations';
 import { formatNumber, cleanNumber, matchesSearch } from '../../../utils/formatters';
@@ -24,7 +24,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   SlidersHorizontal,
-  RotateCw
+  RotateCw,
+  Trash2
 } from 'lucide-react';
 
 const DEFAULT_DOISOAT_COLUMNS = [
@@ -74,6 +75,7 @@ export function DoisoatModule() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   // Always fetch latest reconciliation & aggregated stock data on mount
   React.useEffect(() => {
@@ -333,6 +335,25 @@ export function DoisoatModule() {
     }
   };
 
+  const handleClearAllTonMisa = async () => {
+    const confirmDelete = window.confirm(
+      "CẢNH BÁO: Bạn có chắc chắn muốn XÓA TOÀN BỘ số liệu trong cột Tồn MISA?\n\n- Thao tác này sẽ đặt toàn bộ tồn MISA về rỗng (0).\n- Công thức cột Mã SP & Tên SP vẫn được bảo toàn nguyên vẹn.\n- Thao tác này không thể hoàn tác!"
+    );
+    if (!confirmDelete) return;
+
+    try {
+      setIsClearing(true);
+      await clearSheetRange(CONFIG.reconciliationSheetName, 'C2:C50000');
+      await fetchModule('doisoat', true);
+      alert('Đã xóa toàn bộ số liệu cột Tồn MISA thành công!');
+    } catch (err) {
+      console.error('handleClearAllTonMisa error:', err);
+      alert('Lỗi khi xóa cột Tồn MISA: ' + err.message);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   return (
     <div className="space-y-2">
       {/* Top Controls */}
@@ -391,6 +412,18 @@ export function DoisoatModule() {
               <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
               Mẫu Excel
             </button>
+
+            {hasActionPermission('doisoat.manage') && (
+              <button
+                onClick={handleClearAllTonMisa}
+                disabled={isClearing || isLoading}
+                className="px-2.5 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 font-bold rounded-lg text-xs transition flex items-center gap-1.5 disabled:opacity-50"
+                title="Xóa toàn bộ số liệu cột Tồn MISA (đặt về rỗng)"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                <span>{isClearing ? 'Đang xóa...' : 'Xóa toàn bộ tồn MISA'}</span>
+              </button>
+            )}
 
             <button
               onClick={openConfigModal}

@@ -207,3 +207,26 @@ export async function batchClearAndWriteSheet(sheetName, range, values, valueInp
   const data = await decryptPayload(raw);
   return data.result;
 }
+
+export async function clearSheetRange(sheetName, range) {
+  const response = await fetch('/api/sheets?action=clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'clear',
+      sheetName,
+      range
+    })
+  });
+
+  if (!response.ok) {
+    const rawError = await response.json().catch(() => ({}));
+    const errorData = await decryptPayload(rawError);
+    throw new Error(errorData.error || `Failed to clear sheet ${sheetName}!${range}: HTTP ${response.status}`);
+  }
+
+  const raw = await response.json();
+  const data = await decryptPayload(raw);
+  return data.result;
+}
+
