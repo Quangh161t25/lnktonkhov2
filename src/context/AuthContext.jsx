@@ -200,7 +200,10 @@ export function AuthProvider({ children }) {
     const roleKey = resolveRoleKey(currentUser.role);
     if (roleKey === 'ADMIN') return true;
     const allowed = getAllowedModules();
-    return allowed.includes(moduleKey);
+    if (allowed.includes(moduleKey)) return true;
+    // Tự động cho phép truy cập module con XNK nếu tài khoản có quyền xnk
+    if (moduleKey.startsWith('xnk_') && allowed.includes('xnk')) return true;
+    return false;
   }, [currentUser, getAllowedModules, resolveRoleKey]);
 
   const hasActionPermission = useCallback((actionKey) => {

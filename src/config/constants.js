@@ -75,7 +75,10 @@ export const MODULE_DEFINITIONS = [
   { key: 'nhanvien', name: 'Danh sách nhân viên', desc: 'Danh bạ nhân viên từ DSNV', icon: 'Users', color: 'sky' },
   { key: 'khachhang', name: 'Danh sách khách hàng', desc: 'Khách hàng NPP và NCC', icon: 'UserCheck', color: 'violet' },
   { key: 'dubaonhap', name: 'Dự báo nhập hàng', desc: 'Dự báo điểm đặt hàng (ROP), số ngày hết hàng và lượng cần nhập', icon: 'TrendingUp', color: 'purple' },
-  { key: 'xnk', name: 'Xuất Nhập Khẩu', desc: 'Quản lý ý tưởng SP, đặt mẫu và tiến độ đơn hàng', icon: 'Ship', color: 'blue' },
+  { key: 'xnk', name: 'Tổng quan XNK', desc: 'Dashboard & tiến độ xuất nhập khẩu', icon: 'Ship', color: 'blue' },
+  { key: 'xnk_ytuong', name: 'Ý tưởng sản phẩm', desc: 'Đề xuất & duyệt ý tưởng SP mới', icon: 'Lightbulb', color: 'amber' },
+  { key: 'xnk_mau', name: 'Đặt mẫu & NCC', desc: 'Nhà cung cấp & đánh giá mẫu thử', icon: 'PackageSearch', color: 'indigo' },
+  { key: 'xnk_donhang', name: 'Đơn hàng PO', desc: 'Đặt hàng sản xuất & 5 chặng tiến độ', icon: 'ClipboardList', color: 'emerald' },
   { key: 'caidat', name: 'Cài đặt & Phân quyền', desc: 'Quản trị hệ thống & thiết kế phân quyền', icon: 'Settings', color: 'slate' }
 ];
 

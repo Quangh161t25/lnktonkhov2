@@ -23,13 +23,16 @@ import { DoisoatModule } from './components/modules/doisoat/DoisoatModule';
 import { NhanvienModule } from './components/modules/nhanvien/NhanvienModule';
 import { KhachhangModule } from './components/modules/khachhang/KhachhangModule';
 import { DubaonhapModule } from './components/modules/dubaonhap/DubaonhapModule';
-import { XnkModule } from './components/modules/xnk/XnkModule';
+import { XnkTongQuanModule } from './components/modules/xnk/XnkTongQuanModule';
+import { XnkYtuongModule } from './components/modules/xnk/XnkYtuongModule';
+import { XnkMauModule } from './components/modules/xnk/XnkMauModule';
+import { XnkDonHangModule } from './components/modules/xnk/XnkDonHangModule';
 import { CaidatModule } from './components/modules/caidat/CaidatModule';
 
 const VALID_MODULES = [
   'home', 'tongquan', 'nhap', 'dukien', 'xuat', 'chuyenkho', 'sanpham',
   'sanphamkho', 'cngiasp', 'lendon', 'ton_npp', 'doisoat', 'nhanvien', 'khachhang',
-  'dubaonhap', 'xnk', 'caidat'
+  'dubaonhap', 'xnk', 'xnk_ytuong', 'xnk_mau', 'xnk_donhang', 'caidat'
 ];
 
 function getModuleFromLocation() {
@@ -170,7 +173,21 @@ export function App() {
               <DubaonhapModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
 
-            {activeModule === 'xnk' && <XnkModule />}
+            {activeModule === 'xnk' && (
+              <XnkTongQuanModule onNavigate={(mod) => navigateToModule(mod)} />
+            )}
+
+            {activeModule === 'xnk_ytuong' && (
+              <XnkYtuongModule onNavigate={(mod) => navigateToModule(mod)} />
+            )}
+
+            {activeModule === 'xnk_mau' && (
+              <XnkMauModule onNavigate={(mod) => navigateToModule(mod)} />
+            )}
+
+            {activeModule === 'xnk_donhang' && (
+              <XnkDonHangModule onNavigate={(mod) => navigateToModule(mod)} />
+            )}
 
             {activeModule === 'caidat' && <CaidatModule />}
           </ErrorBoundary>
