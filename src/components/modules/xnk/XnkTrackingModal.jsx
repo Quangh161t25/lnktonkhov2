@@ -67,8 +67,30 @@ function calcDurationDays(startDate, endDate) {
   return diffDays >= 0 ? diffDays : 0;
 }
 
+export function extractTiendoMeta(ghiChu) {
+  if (!ghiChu) return {};
+  const match = (ghiChu || '').match(/\[tiendo:([^\]]+)\]/);
+  if (!match) return {};
+  const pairs = match[1].split(';');
+  const meta = {};
+  pairs.forEach(p => {
+    const [k, v] = p.split('=');
+    if (k && v !== undefined) meta[k.trim()] = v.trim();
+  });
+  return meta;
+}
+
+export function buildGhiChuWithMeta(userGhiChu, meta) {
+  const cleanNote = (userGhiChu || '').replace(/\s*\[tiendo:[^\]]+\]\s*/g, '').trim();
+  const metaStr = Object.entries(meta)
+    .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${k}=${v}`)
+    .join(';');
+  return metaStr ? (cleanNote ? `${cleanNote} [tiendo:${metaStr}]` : `[tiendo:${metaStr}]`) : cleanNote;
+}
+
 export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
-  const { updateRow, logAuditAction, fetchModule } = useData();
+  const { updateRow, logAuditAction, fetchModule, xnkDonHangData } = useData();
 
   const [activeView, setActiveView] = useState('TABLE'); // 'TABLE' | 'STEPPER'
 
@@ -111,35 +133,39 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
 
   useEffect(() => {
     if (order) {
+      const meta = extractTiendoMeta(order.ghi_chu);
+
       const dtStart1 = order.ngay_dat_hang ? formatDateInput(order.ngay_dat_hang) : formatDateInput(new Date());
       setNgayDatHang(dtStart1);
 
-      const d1 = 1;
+      const d1 = meta.d1 ? (parseInt(meta.d1, 10) || 1) : 1;
       setDaysS1(d1);
-      const end1 = addDays(dtStart1, d1);
+      const end1 = meta.coc ? formatDateInput(meta.coc) : addDays(dtStart1, d1);
       setNgayCocXong(end1);
-      setS1Done(Boolean(order.ngay_dat_hang));
+      setS1Done(meta.s1 !== undefined ? meta.s1 === '1' : Boolean(order.ngay_dat_hang));
 
       const dtSx = order.ngay_sx_xong ? formatDateInput(order.ngay_sx_xong) : '';
       const d2 = dtSx ? (calcDurationDays(end1, dtSx) || 1) : 15;
       setDaysS2(d2);
       const end2 = dtSx || addDays(end1, d2);
       setNgaySxXong(end2);
-      setS2Done(Boolean(dtSx));
+      setS2Done(meta.s2 !== undefined ? meta.s2 === '1' : Boolean(dtSx));
 
       setTrackingVanChuyen(order.tracking_van_chuyen || '');
-      const d3 = 7;
+      const d3 = meta.d3 ? (parseInt(meta.d3, 10) || 7) : 7;
       setDaysS3(d3);
-      const end3 = addDays(end2, d3);
-      setNgayDenCang(end3);
-      setS3Done(Boolean(order.tracking_van_chuyen || order.ngay_gui_hang));
+      const dtDenCang = meta.cang 
+        ? formatDateInput(meta.cang) 
+        : (order.ngay_gui_hang && order.ngay_gui_hang !== dtSx ? formatDateInput(order.ngay_gui_hang) : addDays(end2, d3));
+      setNgayDenCang(dtDenCang);
+      setS3Done(meta.s3 !== undefined ? meta.s3 === '1' : Boolean(order.tracking_van_chuyen || order.ngay_gui_hang));
 
       const dtTq = order.ngay_thong_quan ? formatDateInput(order.ngay_thong_quan) : '';
-      const d4 = dtTq ? (calcDurationDays(end3, dtTq) || 1) : 3;
+      const d4 = dtTq ? (calcDurationDays(dtDenCang, dtTq) || 1) : 3;
       setDaysS4(d4);
-      const end4 = dtTq || addDays(end3, d4);
+      const end4 = dtTq || addDays(dtDenCang, d4);
       setNgayThongQuan(end4);
-      setS4Done(Boolean(dtTq));
+      setS4Done(meta.s4 !== undefined ? meta.s4 === '1' : Boolean(dtTq));
 
       const dtKho = order.ngay_kho_nhan ? formatDateInput(order.ngay_kho_nhan) : '';
       const d5 = dtKho ? (calcDurationDays(end4, dtKho) || 1) : 2;
@@ -147,7 +173,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
       const end5 = dtKho || addDays(end4, d5);
       setNgayKhoNhan(end5);
       setSlgThucNhan(order.slg_thuc_nhan !== undefined && order.slg_thuc_nhan !== '' ? order.slg_thuc_nhan : '');
-      setS5Done(Boolean(dtKho));
+      setS5Done(meta.s5 !== undefined ? meta.s5 === '1' : Boolean(dtKho));
 
       const rawPlan = order.ke_hoach_ban || 'Bán ngay';
       const isBanSau = rawPlan.includes('Bán sau');
@@ -164,7 +190,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
       const d6 = calcDurationDays(end5, dtBan);
       setDaysS6(d6);
       setNgayKeHoachBan(dtBan);
-      setS6Done(Boolean(dtKho && new Date() >= new Date(dtBan)));
+      setS6Done(meta.s6 !== undefined ? meta.s6 === '1' : Boolean(dtKho && new Date() >= new Date(dtBan)));
     }
   }, [order, isOpen]);
 
@@ -349,6 +375,55 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
     setKeHoachBanType(d === 0 ? 'Bán ngay' : 'Bán sau (Trữ kho)');
   };
 
+  const handleToggleS1 = () => {
+    const next = !s1Done;
+    setS1Done(next);
+    if (next && !ngayDatHang) {
+      handleStart1Change(formatDateInput(new Date()));
+    }
+  };
+
+  const handleToggleS2 = () => {
+    const next = !s2Done;
+    setS2Done(next);
+    if (next && !ngaySxXong) {
+      handleEnd2Change(addDays(ngayCocXong, daysS2));
+    }
+  };
+
+  const handleToggleS3 = () => {
+    const next = !s3Done;
+    setS3Done(next);
+    if (next && !ngayDenCang) {
+      handleEnd3Change(addDays(ngaySxXong, daysS3));
+    }
+  };
+
+  const handleToggleS4 = () => {
+    const next = !s4Done;
+    setS4Done(next);
+    if (next && !ngayThongQuan) {
+      handleEnd4Change(addDays(ngayDenCang, daysS4));
+    }
+  };
+
+  const handleToggleS5 = () => {
+    const next = !s5Done;
+    setS5Done(next);
+    if (next) {
+      if (!ngayKhoNhan) handleEnd5Change(addDays(ngayThongQuan, daysS5));
+      if (!slgThucNhan) setSlgThucNhan(order.so_luong || '');
+    }
+  };
+
+  const handleToggleS6 = () => {
+    const next = !s6Done;
+    setS6Done(next);
+    if (next && !ngayKeHoachBan) {
+      handleEnd6Change(addDays(ngayKhoNhan, daysS6));
+    }
+  };
+
   // 6 Stages Definition for Stepper
   const stages = [
     {
@@ -424,7 +499,21 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
 
   // Lưu cập nhật tiến độ trực tiếp lên Google Sheets
   const handleSaveProgress = async () => {
-    if (!order._sheetRow) return;
+    // 1. Resolve targetSheetRow with fallback lookup by order.ma_po
+    let targetSheetRow = order._sheetRow;
+    if (!targetSheetRow && xnkDonHangData && xnkDonHangData.length > 1) {
+      const targetPo = (order.ma_po || '').toString().trim().toUpperCase();
+      const foundIdx = xnkDonHangData.slice(1).findIndex(r => (r[0] || '').toString().trim().toUpperCase() === targetPo);
+      if (foundIdx !== -1) {
+        targetSheetRow = foundIdx + 2;
+      }
+    }
+
+    if (!targetSheetRow) {
+      alert('Không tìm thấy dòng tương ứng của đơn hàng trên Google Sheets để lưu tiến độ.');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const finalStatus = autoStatus;
@@ -433,29 +522,46 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
         formattedKeHoach = `${keHoachBanType} [${formatDateVN(ngayKeHoachBan)}]`;
       }
 
+      const meta = {
+        s1: s1Done ? 1 : 0,
+        s2: s2Done ? 1 : 0,
+        s3: s3Done ? 1 : 0,
+        s4: s4Done ? 1 : 0,
+        s5: s5Done ? 1 : 0,
+        s6: s6Done ? 1 : 0,
+        d1: daysS1,
+        coc: ngayCocXong,
+        d3: daysS3,
+        cang: ngayDenCang
+      };
+
+      const rawRow = (xnkDonHangData && xnkDonHangData[targetSheetRow - 1]) || [];
+      const userGhiChu = (order.ghi_chu !== undefined ? order.ghi_chu : rawRow[18]) || '';
+      const finalGhiChu = buildGhiChuWithMeta(userGhiChu, meta);
+
       const rowValues = [
-        order.ma_po,
-        order.id_mau || '',
-        order.sku || '',
-        order.ten_sp || '',
-        order.ten_ncc || '',
-        cleanNumber(order.so_luong) || 0,
-        cleanNumber(order.don_gia) || 0,
-        cleanNumber(order.tong_tien) || 0,
-        cleanNumber(order.tien_coc) || 0,
+        (order.ma_po || rawRow[0] || '').toString().trim(),
+        (order.id_mau || rawRow[1] || '').toString().trim(),
+        (order.sku || rawRow[2] || '').toString().trim(),
+        (order.ten_sp || rawRow[3] || '').toString().trim(),
+        (order.ten_ncc || rawRow[4] || '').toString().trim(),
+        cleanNumber(order.so_luong !== undefined ? order.so_luong : rawRow[5]) || 0,
+        cleanNumber(order.don_gia !== undefined ? order.don_gia : rawRow[6]) || 0,
+        cleanNumber(order.tong_tien !== undefined ? order.tong_tien : rawRow[7]) || 0,
+        cleanNumber(order.tien_coc !== undefined ? order.tien_coc : rawRow[8]) || 0,
         ngayDatHang,
         ngaySxXong,
         trackingVanChuyen.trim(),
-        ngaySxXong,
+        ngayDenCang, // Lưu ngày đến cảng / hoàn thành chặng 3 vào cột 12
         ngayThongQuan,
         ngayKhoNhan,
         slgThucNhan !== '' ? cleanNumber(slgThucNhan) : '',
         formattedKeHoach,
         finalStatus,
-        order.ghi_chu || ''
+        finalGhiChu
       ];
 
-      await updateRow('xnk_donhang', order._sheetRow, rowValues);
+      await updateRow('xnk_donhang', targetSheetRow, rowValues);
       if (logAuditAction) {
         await logAuditAction({
           moduleName: 'xnk',
@@ -465,8 +571,9 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
           summary: `Cập nhật tiến độ 6 chặng đơn PO ${order.ma_po}: ${finalStatus}`
         });
       }
+      await new Promise(r => setTimeout(r, 400));
       await fetchModule('xnk_donhang', true);
-      if (onSaved) onSaved();
+      if (onSaved) await onSaved();
       alert('Đã cập nhật tiến độ đơn hàng thành công!');
       onClose();
     } catch (err) {
@@ -601,7 +708,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setS1Done(!s1Done)}
+                        onClick={handleToggleS1}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
                           s1Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
                         }`}
@@ -646,7 +753,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setS2Done(!s2Done)}
+                        onClick={handleToggleS2}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
                           s2Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
                         }`}
@@ -691,7 +798,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setS3Done(!s3Done)}
+                        onClick={handleToggleS3}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
                           s3Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
                         }`}
@@ -742,7 +849,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setS4Done(!s4Done)}
+                        onClick={handleToggleS4}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
                           s4Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
                         }`}
@@ -787,7 +894,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setS5Done(!s5Done)}
+                        onClick={handleToggleS5}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
                           s5Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
                         }`}
@@ -838,7 +945,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setS6Done(!s6Done)}
+                        onClick={handleToggleS6}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
                           s6Done ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-500'
                         }`}

@@ -27,6 +27,7 @@ import {
   TrendingUp,
   AlertCircle
 } from 'lucide-react';
+import { extractTiendoMeta, buildGhiChuWithMeta } from './XnkTrackingModal';
 
 // Cộng trừ ngày theo múi giờ địa phương an toàn
 function addDays(dateStr, days) {
@@ -85,6 +86,7 @@ export function XnkDonHangDrawer({
     logAuditAction, 
     xnkYtuongData, 
     xnkMauData,
+    xnkDonHangData,
     productData,
     fetchModule 
   } = useData();
@@ -248,15 +250,16 @@ export function XnkDonHangDrawer({
       setTienCoc(editItem.tien_coc !== undefined && editItem.tien_coc !== '' ? editItem.tien_coc : 0);
       
       // Ngày & Tiến độ
+      const meta = extractTiendoMeta(editItem.ghi_chu);
       const dtStart1 = editItem.ngay_dat_hang ? formatDateInput(editItem.ngay_dat_hang) : formatDateInput(new Date());
       setNgayDatHang(dtStart1);
       
       // Chặng 1
-      const d1 = 1;
+      const d1 = meta.d1 ? (parseInt(meta.d1, 10) || 1) : 1;
       setDaysStage1(d1);
-      const end1 = addDays(dtStart1, d1);
+      const end1 = meta.coc ? formatDateInput(meta.coc) : addDays(dtStart1, d1);
       setNgayCocXong(end1);
-      setStage1Done(Boolean(dtStart1));
+      setStage1Done(meta.s1 !== undefined ? meta.s1 === '1' : Boolean(dtStart1));
 
       // Chặng 2
       const dtSx = editItem.ngay_sx_xong ? formatDateInput(editItem.ngay_sx_xong) : '';
@@ -264,24 +267,25 @@ export function XnkDonHangDrawer({
       setDaysStage2(d2);
       const end2 = dtSx || addDays(end1, d2);
       setNgaySxXong(end2);
-      setStage2Done(Boolean(dtSx));
+      setStage2Done(meta.s2 !== undefined ? meta.s2 === '1' : Boolean(dtSx));
 
       // Chặng 3
-      const dtGui = editItem.ngay_gui_hang ? formatDateInput(editItem.ngay_gui_hang) : end2;
       setTrackingVanChuyen(editItem.tracking_van_chuyen || '');
-      const d3 = 7;
+      const d3 = meta.d3 ? (parseInt(meta.d3, 10) || 7) : 7;
       setDaysStage3(d3);
-      const end3 = addDays(end2, d3);
-      setNgayDenCang(end3);
-      setStage3Done(Boolean(editItem.tracking_van_chuyen || editItem.ngay_gui_hang));
+      const dtDenCang = meta.cang
+        ? formatDateInput(meta.cang)
+        : (editItem.ngay_gui_hang && editItem.ngay_gui_hang !== dtSx ? formatDateInput(editItem.ngay_gui_hang) : addDays(end2, d3));
+      setNgayDenCang(dtDenCang);
+      setStage3Done(meta.s3 !== undefined ? meta.s3 === '1' : Boolean(editItem.tracking_van_chuyen || editItem.ngay_gui_hang));
 
       // Chặng 4
       const dtTq = editItem.ngay_thong_quan ? formatDateInput(editItem.ngay_thong_quan) : '';
-      const d4 = dtTq ? (calcDurationDays(end3, dtTq) || 1) : 3;
+      const d4 = dtTq ? (calcDurationDays(dtDenCang, dtTq) || 1) : 3;
       setDaysStage4(d4);
-      const end4 = dtTq || addDays(end3, d4);
+      const end4 = dtTq || addDays(dtDenCang, d4);
       setNgayThongQuan(end4);
-      setStage4Done(Boolean(dtTq));
+      setStage4Done(meta.s4 !== undefined ? meta.s4 === '1' : Boolean(dtTq));
 
       // Chặng 5
       const dtKho = editItem.ngay_kho_nhan ? formatDateInput(editItem.ngay_kho_nhan) : '';
@@ -290,7 +294,7 @@ export function XnkDonHangDrawer({
       const end5 = dtKho || addDays(end4, d5);
       setNgayKhoNhan(end5);
       setSlgThucNhan(editItem.slg_thuc_nhan !== undefined && editItem.slg_thuc_nhan !== '' ? editItem.slg_thuc_nhan : '');
-      setStage5Done(Boolean(dtKho));
+      setStage5Done(meta.s5 !== undefined ? meta.s5 === '1' : Boolean(dtKho));
 
       // Chặng 6: Kế hoạch bán
       const rawKeHoach = editItem.ke_hoach_ban || 'Bán ngay';
@@ -308,7 +312,7 @@ export function XnkDonHangDrawer({
       const d6 = calcDurationDays(end5, dtBan);
       setDaysStage6(d6);
       setNgayKeHoachBan(dtBan);
-      setStage6Done(Boolean(rawKeHoach && dtKho && new Date() >= new Date(dtBan)));
+      setStage6Done(meta.s6 !== undefined ? meta.s6 === '1' : Boolean(rawKeHoach && dtKho && new Date() >= new Date(dtBan)));
 
       // Tra cứu ý tưởng từ mẫu
       const matchingSample = approvedSamples.find(s => s.id_mau === editItem.id_mau);
@@ -632,6 +636,31 @@ export function XnkDonHangDrawer({
 
       const finalStatus = manualStatusOverride || autoComputedStatus;
 
+      // 1. Resolve targetSheetRow with fallback lookup by maPo
+      let targetSheetRow = (editItem && editItem._sheetRow);
+      if (!targetSheetRow && maPo && xnkDonHangData && xnkDonHangData.length > 1) {
+        const targetPo = maPo.toString().trim().toUpperCase();
+        const foundIdx = xnkDonHangData.slice(1).findIndex(r => (r[0] || '').toString().trim().toUpperCase() === targetPo);
+        if (foundIdx !== -1) {
+          targetSheetRow = foundIdx + 2;
+        }
+      }
+
+      const meta = {
+        s1: stage1Done ? 1 : 0,
+        s2: stage2Done ? 1 : 0,
+        s3: stage3Done ? 1 : 0,
+        s4: stage4Done ? 1 : 0,
+        s5: stage5Done ? 1 : 0,
+        s6: stage6Done ? 1 : 0,
+        d1: daysStage1,
+        coc: ngayCocXong,
+        d3: daysStage3,
+        cang: ngayDenCang
+      };
+
+      const finalGhiChu = buildGhiChuWithMeta(ghiChu.trim(), meta);
+
       // 19 Cột chuẩn của Google Sheet XNK_DON_HANG:
       // ['ma_po', 'id_mau', 'sku', 'ten_sp', 'ten_ncc', 'so_luong', 'don_gia', 'tong_tien', 'tien_coc', 'ngay_dat_hang', 'ngay_sx_xong', 'tracking_van_chuyen', 'ngay_gui_hang', 'ngay_thong_quan', 'ngay_kho_nhan', 'slg_thuc_nhan', 'ke_hoach_ban', 'tinh_trang_cuoi', 'ghi_chu']
       const rowValues = [
@@ -647,17 +676,17 @@ export function XnkDonHangDrawer({
         ngayDatHang,
         ngaySxXong,
         trackingVanChuyen.trim(),
-        ngaySxXong, // Từ ngày chặng 3 nối tiếp từ kết thúc SX
+        ngayDenCang, // Cột 12: Ngày đến cảng / hoàn thành chặng 3
         ngayThongQuan,
         ngayKhoNhan,
         slgThucNhan !== '' ? cleanNumber(slgThucNhan) : '',
         formattedKeHoach,
         finalStatus,
-        ghiChu.trim()
+        finalGhiChu
       ];
 
-      if (editItem && editItem._sheetRow) {
-        await updateRow('xnk_donhang', editItem._sheetRow, rowValues);
+      if (targetSheetRow) {
+        await updateRow('xnk_donhang', targetSheetRow, rowValues);
         if (logAuditAction) {
           await logAuditAction({
             moduleName: 'xnk',
@@ -680,7 +709,9 @@ export function XnkDonHangDrawer({
         }
       }
 
-      if (onSaved) onSaved();
+      await new Promise(r => setTimeout(r, 400));
+      await fetchModule('xnk_donhang', true);
+      if (onSaved) await onSaved();
       onClose();
     } catch (err) {
       console.error('Lỗi lưu đơn PO:', err);

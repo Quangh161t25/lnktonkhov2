@@ -493,6 +493,9 @@ export function XnkTongQuanModule({ onNavigate }) {
         isOpen={isTrackingModalOpen}
         onClose={() => setIsTrackingModalOpen(false)}
         order={trackingOrder}
+        onSaved={async () => {
+          await fetchModule('xnk_donhang', true);
+        }}
       />
     </div>
   );

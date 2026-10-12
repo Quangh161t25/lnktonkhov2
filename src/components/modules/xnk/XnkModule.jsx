@@ -1197,6 +1197,9 @@ export function XnkModule({ onNavigate }) {
         isOpen={isTrackingModalOpen}
         onClose={() => setIsTrackingModalOpen(false)}
         order={trackingOrder}
+        onSaved={async () => {
+          await fetchModule('xnk_donhang', true);
+        }}
       />
 
       {/* Cross-lifecycle Detail Modal */}
@@ -1216,6 +1219,10 @@ export function XnkModule({ onNavigate }) {
         onOpenEditPo={(po) => {
           setSelectedDonHang(po);
           setIsDonHangDrawerOpen(true);
+        }}
+        onOpenEditTracking={(po) => {
+          setTrackingOrder(po);
+          setIsTrackingModalOpen(true);
         }}
         onOpenCreateMau={handleCreateSampleFromIdea}
         onOpenCreatePo={() => {

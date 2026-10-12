@@ -40,7 +40,8 @@ export function XnkChiTietModal({
   onOpenEditMau = null,
   onOpenEditPo = null,
   onOpenCreateMau = null,
-  onOpenCreatePo = null
+  onOpenCreatePo = null,
+  onOpenEditTracking = null
 }) {
   const { 
     xnkYtuongData, 
@@ -502,6 +503,20 @@ export function XnkChiTietModal({
                             <span>Xem tiến độ 6 chặng</span>
                           </button>
 
+                          {onOpenEditTracking && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenEditTracking(po);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Cập nhật tiến độ</span>
+                            </button>
+                          )}
+
                           {onOpenEditPo && (
                             <button
                               type="button"
@@ -766,9 +781,24 @@ export function XnkChiTietModal({
                       </p>
                     </div>
 
-                    <span className="px-3 py-1 bg-indigo-600 text-white font-bold rounded-xl text-xs shadow-2xs">
-                      Trạng thái: {selectedPo.tinh_trang_cuoi || 'Đang sản xuất'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-indigo-600 text-white font-bold rounded-xl text-xs shadow-2xs">
+                        Trạng thái: {selectedPo.tinh_trang_cuoi || 'Đang sản xuất'}
+                      </span>
+                      {onOpenEditTracking && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            onOpenEditTracking(selectedPo);
+                          }}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1 cursor-pointer shadow-xs"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Cập nhật tiến độ</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Sơ đồ 6 chặng */}
