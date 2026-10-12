@@ -128,17 +128,39 @@ export function XnkChiTietModal({
     if (!item) return null;
     if (type === 'ytuong') return item;
     if (type === 'mau') {
-      return allIdeas.find(i => i.id_y_tuong === item.id_y_tuong) || null;
+      const targetId = String(item.id_y_tuong || '').trim();
+      if (!targetId) return null;
+      return allIdeas.find(i => {
+        const iId = String(i.id_y_tuong || '').trim();
+        const iSku = String(i.sku_du_kien || '').trim();
+        return (targetId && iId === targetId) || (targetId && iSku === targetId);
+      }) || null;
     }
     if (type === 'donhang' || type === 'tiendo') {
-      if (item.id_mau) {
-        const foundSample = allSamples.find(s => s.id_mau === item.id_mau);
-        if (foundSample?.id_y_tuong) {
-          const found = allIdeas.find(i => i.id_y_tuong === foundSample.id_y_tuong);
+      const targetMau = String(item.id_mau || '').trim();
+      if (targetMau) {
+        const foundSample = allSamples.find(s => String(s.id_mau || '').trim() === targetMau);
+        const sampleIdeaId = String(foundSample?.id_y_tuong || '').trim();
+        if (sampleIdeaId) {
+          const found = allIdeas.find(i => {
+            const iId = String(i.id_y_tuong || '').trim();
+            const iSku = String(i.sku_du_kien || '').trim();
+            return (sampleIdeaId && iId === sampleIdeaId) || (sampleIdeaId && iSku === sampleIdeaId);
+          });
           if (found) return found;
         }
       }
-      return allIdeas.find(i => i.sku_du_kien === item.sku || i.ten_sp === item.ten_sp) || null;
+      const targetSku = String(item.sku || '').trim();
+      if (targetSku) {
+        const found = allIdeas.find(i => i.sku_du_kien && String(i.sku_du_kien).trim() === targetSku);
+        if (found) return found;
+      }
+      const targetName = String(item.ten_sp || '').trim().toLowerCase();
+      if (targetName) {
+        const found = allIdeas.find(i => i.ten_sp && String(i.ten_sp).trim().toLowerCase() === targetName);
+        if (found) return found;
+      }
+      return null;
     }
     return null;
   }, [item, type, allIdeas, allSamples]);
@@ -147,20 +169,37 @@ export function XnkChiTietModal({
     if (!item) return [];
     if (type === 'mau') return [item];
     if (type === 'ytuong') {
-      return allSamples.filter(s => s.id_y_tuong === item.id_y_tuong);
+      const targetIdeaId = String(item.id_y_tuong || '').trim();
+      const targetSku = String(item.sku_du_kien || '').trim();
+      if (!targetIdeaId && !targetSku) return [];
+      return allSamples.filter(s => {
+        const sIdea = String(s.id_y_tuong || '').trim();
+        return (targetIdeaId && sIdea === targetIdeaId) || (targetSku && sIdea === targetSku);
+      });
     }
     if (type === 'donhang' || type === 'tiendo') {
-      if (item.id_mau) {
-        const found = allSamples.filter(s => s.id_mau === item.id_mau);
+      const targetMau = String(item.id_mau || '').trim();
+      if (targetMau) {
+        const found = allSamples.filter(s => String(s.id_mau || '').trim() === targetMau);
         if (found.length > 0) return found;
       }
       if (currentIdea) {
-        return allSamples.filter(s => s.id_y_tuong === currentIdea.id_y_tuong);
+        const ideaId = String(currentIdea.id_y_tuong || '').trim();
+        const ideaSku = String(currentIdea.sku_du_kien || '').trim();
+        if (ideaId || ideaSku) {
+          const found = allSamples.filter(s => {
+            const sIdea = String(s.id_y_tuong || '').trim();
+            return (ideaId && sIdea === ideaId) || (ideaSku && sIdea === ideaSku);
+          });
+          if (found.length > 0) return found;
+        }
       }
+      return [];
     }
     if (type === 'ncc') {
-      const nccName = (item.name || item.ten_ncc || '').toLowerCase();
-      return allSamples.filter(s => (s.ten_ncc || '').toLowerCase() === nccName);
+      const nccName = String(item.name || item.ten_ncc || item.ho_ten || '').trim().toLowerCase();
+      if (!nccName) return [];
+      return allSamples.filter(s => String(s.ten_ncc || '').trim().toLowerCase() === nccName);
     }
     return [];
   }, [item, type, allSamples, currentIdea]);
@@ -171,23 +210,39 @@ export function XnkChiTietModal({
       return [item];
     }
     if (type === 'ytuong') {
-      const sampleIds = new Set(relatedSamples.map(s => s.id_mau));
-      return allOrders.filter(o => 
-        (o.id_mau && sampleIds.has(o.id_mau)) ||
-        (item.sku_du_kien && o.sku === item.sku_du_kien) ||
-        (item.ten_sp && o.ten_sp.toLowerCase() === item.ten_sp.toLowerCase())
-      );
+      const sampleIds = new Set(relatedSamples.map(s => String(s.id_mau || '').trim()).filter(Boolean));
+      const targetSku = String(item.sku_du_kien || '').trim();
+      const targetName = String(item.ten_sp || '').trim().toLowerCase();
+      return allOrders.filter(o => {
+        const oMau = String(o.id_mau || '').trim();
+        const oSku = String(o.sku || '').trim();
+        const oName = String(o.ten_sp || '').trim().toLowerCase();
+        return (
+          (oMau && sampleIds.has(oMau)) ||
+          (targetSku && oSku === targetSku) ||
+          (targetName && oName === targetName)
+        );
+      });
     }
     if (type === 'mau') {
-      return allOrders.filter(o => 
-        o.id_mau === item.id_mau ||
-        (currentIdea?.sku_du_kien && o.sku === currentIdea.sku_du_kien) ||
-        (currentIdea?.ten_sp && o.ten_sp.toLowerCase() === currentIdea.ten_sp.toLowerCase())
-      );
+      const sampleId = String(item.id_mau || '').trim();
+      const ideaSku = String(currentIdea?.sku_du_kien || '').trim();
+      const ideaName = String(currentIdea?.ten_sp || '').trim().toLowerCase();
+      return allOrders.filter(o => {
+        const oMau = String(o.id_mau || '').trim();
+        const oSku = String(o.sku || '').trim();
+        const oName = String(o.ten_sp || '').trim().toLowerCase();
+        return (
+          (sampleId && oMau === sampleId) ||
+          (ideaSku && oSku === ideaSku) ||
+          (ideaName && oName === ideaName)
+        );
+      });
     }
     if (type === 'ncc') {
-      const nccName = (item.name || item.ten_ncc || '').toLowerCase();
-      return allOrders.filter(o => (o.ten_ncc || '').toLowerCase() === nccName);
+      const nccName = String(item.name || item.ten_ncc || item.ho_ten || '').trim().toLowerCase();
+      if (!nccName) return [];
+      return allOrders.filter(o => String(o.ten_ncc || '').trim().toLowerCase() === nccName);
     }
     return [];
   }, [item, type, allOrders, relatedSamples, currentIdea]);
@@ -201,12 +256,12 @@ export function XnkChiTietModal({
   // Tìm thông tin Nhà cung cấp từ usersData
   const matchedUserNcc = useMemo(() => {
     if (!item) return null;
-    const targetName = (item.ten_ncc || item.name || selectedPo?.ten_ncc || (relatedSamples[0] && relatedSamples[0].ten_ncc) || '').trim().toLowerCase();
+    const targetName = String(item.ten_ncc || item.name || selectedPo?.ten_ncc || (relatedSamples[0] && relatedSamples[0].ten_ncc) || '').trim().toLowerCase();
     if (!targetName) return null;
     if (!usersData || usersData.length <= 1) return null;
     return usersData.slice(1).find(u => {
-      const uName = (u[1] || u.ho_ten || u.name || '').trim().toLowerCase();
-      const uId = (u[0] || u.id || '').trim().toLowerCase();
+      const uName = String(u[1] || u.ho_ten || u.name || '').trim().toLowerCase();
+      const uId = String(u[0] || u.id || '').trim().toLowerCase();
       return uName === targetName || uId === targetName;
     });
   }, [item, selectedPo, relatedSamples, usersData]);
@@ -402,9 +457,7 @@ export function XnkChiTietModal({
     }
   }, [availableTabs, activeTab]);
 
-  if (!isOpen || !item) return null;
-
-  // Title name
+  // Title name - Luôn gọi Hook ở đầu component trước conditional return
   const displayTitle = useMemo(() => {
     if (!item) return 'Chi tiết nghiệp vụ';
     if (type === 'ytuong') {
@@ -424,6 +477,8 @@ export function XnkChiTietModal({
     }
     return item.ten_sp || item.ma_po || item.name || item.id_mau || item.id_y_tuong || 'Chi tiết nghiệp vụ';
   }, [item, type, currentIdea]);
+
+  if (!isOpen || !item) return null;
 
   let resolvedWidthClass = 'w-full max-w-4xl';
   if (drawerSize === 'small') {
@@ -640,7 +695,7 @@ export function XnkChiTietModal({
                             {po.tinh_trang_cuoi || 'Đang xử lý'}
                           </span>
                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                            po.ke_hoach_ban?.startsWith('Bán ngay')
+                            String(po.ke_hoach_ban || '').startsWith('Bán ngay')
                               ? 'bg-emerald-100 text-emerald-800'
                               : 'bg-amber-100 text-amber-800'
                           }`}>
@@ -827,7 +882,7 @@ export function XnkChiTietModal({
                         Link gốc: <strong className="text-blue-600">{currentIdea.link_tham_khao}</strong>
                       </div>
                       <a
-                        href={currentIdea.link_tham_khao.startsWith('http') ? currentIdea.link_tham_khao : `https://${currentIdea.link_tham_khao}`}
+                        href={String(currentIdea.link_tham_khao).startsWith('http') ? currentIdea.link_tham_khao : `https://${currentIdea.link_tham_khao}`}
                         target="_blank"
                         rel="noreferrer"
                         className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg transition inline-flex items-center gap-1 cursor-pointer shrink-0"
