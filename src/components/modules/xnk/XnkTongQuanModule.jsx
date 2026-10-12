@@ -8,7 +8,9 @@ import {
   formatDateVN, 
   formatNumber, 
   formatCurrency, 
-  cleanNumber 
+  cleanNumber,
+  parseSimpleSheetDate,
+  matchesSearch
 } from '../../../utils/formatters';
 import { 
   Ship, 
@@ -28,7 +30,10 @@ import {
   Eye, 
   ArrowRight,
   Sparkles,
-  PackageCheck
+  PackageCheck,
+  Search,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 
 export function XnkTongQuanModule({ onNavigate }) {
@@ -42,6 +47,14 @@ export function XnkTongQuanModule({ onNavigate }) {
 
   const [trackingOrder, setTrackingOrder] = useState(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+
+  // Filters for Overview Dashboard
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [nccFilter, setNccFilter] = useState('ALL');
+  const [planFilter, setPlanFilter] = useState('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
     fetchModule('xnk');
@@ -112,63 +125,155 @@ export function XnkTongQuanModule({ onNavigate }) {
     })).filter(i => i.ma_po || i.ten_sp);
   }, [xnkDonHangData]);
 
-  // KPI Calculations
-  const totalYtuong = ytuongList.length;
-  const approvedYtuong = ytuongList.filter(y => y.trang_thai === 'Đã duyệt').length;
-  const pendingYtuong = ytuongList.filter(y => y.trang_thai === 'Đang thảo luận' || y.trang_thai === 'Mới tạo').length;
+  // Options for NCC Filter
+  const nccOptions = useMemo(() => {
+    const set = new Set();
+    donHangList.forEach(d => {
+      const ncc = (d.ten_ncc || '').trim();
+      if (ncc) set.add(ncc);
+    });
+    mauList.forEach(m => {
+      const ncc = (m.ten_ncc || '').trim();
+      if (ncc) set.add(ncc);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [donHangList, mauList]);
 
-  const totalMau = mauList.length;
-  const approvedMau = mauList.filter(m => m.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)' || m.danh_gia_xep_hang === 'Đạt').length;
-  const pendingMau = mauList.filter(m => m.trang_thai_duyet === 'Chờ duyệt').length;
+  // Date range checking helper
+  const isDateInRange = (dateStr, from, to) => {
+    if (!from && !to) return true;
+    if (!dateStr) return false;
+    const d = parseSimpleSheetDate(dateStr);
+    if (!d || Number.isNaN(d.getTime())) return false;
+    if (from) {
+      const dFrom = new Date(`${from}T00:00:00`);
+      if (d < dFrom) return false;
+    }
+    if (to) {
+      const dTo = new Date(`${to}T23:59:59.999`);
+      if (d > dTo) return false;
+    }
+    return true;
+  };
 
-  const totalPo = donHangList.length;
-  const totalQtyOrdered = donHangList.reduce((acc, d) => acc + (d.so_luong || 0), 0);
-  const totalPoValue = donHangList.reduce((acc, d) => acc + (d.tong_tien || 0), 0);
-  const totalDepositPaid = donHangList.reduce((acc, d) => acc + (d.tien_coc || 0), 0);
-  const warehouseReceivedCount = donHangList.filter(d => d.tinh_trang_cuoi === 'Đã về kho' || d.tinh_trang_cuoi === 'Đã hoàn thành').length;
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('ALL');
+    setNccFilter('ALL');
+    setPlanFilter('ALL');
+    setDateFrom('');
+    setDateTo('');
+  };
 
-  // Kanban 5 stages
+  // Filtered Don Hang List
+  const filteredDonHangList = useMemo(() => {
+    return donHangList.filter(d => {
+      if (statusFilter !== 'ALL' && d.tinh_trang_cuoi !== statusFilter) return false;
+      if (nccFilter !== 'ALL' && d.ten_ncc !== nccFilter) return false;
+      if (planFilter !== 'ALL' && d.ke_hoach_ban !== planFilter) return false;
+      if (!isDateInRange(d.ngay_dat_hang || d.ngay_kho_nhan, dateFrom, dateTo)) return false;
+      if (searchTerm) {
+        const match = 
+          matchesSearch(d.ma_po, searchTerm) ||
+          matchesSearch(d.sku, searchTerm) ||
+          matchesSearch(d.ten_sp, searchTerm) ||
+          matchesSearch(d.ten_ncc, searchTerm) ||
+          matchesSearch(d.tracking_van_chuyen, searchTerm);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [donHangList, statusFilter, nccFilter, planFilter, dateFrom, dateTo, searchTerm]);
+
+  // Filtered Y tuong List
+  const filteredYtuongList = useMemo(() => {
+    return ytuongList.filter(y => {
+      if (!isDateInRange(y.ngay_tao, dateFrom, dateTo)) return false;
+      if (searchTerm) {
+        const match = 
+          matchesSearch(y.id_y_tuong, searchTerm) ||
+          matchesSearch(y.ten_sp, searchTerm) ||
+          matchesSearch(y.sku_du_kien, searchTerm) ||
+          matchesSearch(y.nguoi_tao, searchTerm);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [ytuongList, dateFrom, dateTo, searchTerm]);
+
+  // Filtered Mau List
+  const filteredMauList = useMemo(() => {
+    return mauList.filter(m => {
+      if (nccFilter !== 'ALL' && m.ten_ncc !== nccFilter) return false;
+      if (!isDateInRange(m.ngay_dat_mau || m.ngay_nhan_mau, dateFrom, dateTo)) return false;
+      if (searchTerm) {
+        const match = 
+          matchesSearch(m.id_mau, searchTerm) ||
+          matchesSearch(m.ten_ncc, searchTerm) ||
+          matchesSearch(m.id_y_tuong, searchTerm);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [mauList, nccFilter, dateFrom, dateTo, searchTerm]);
+
+  // KPI Calculations based on filtered lists
+  const totalYtuong = filteredYtuongList.length;
+  const approvedYtuong = filteredYtuongList.filter(y => y.trang_thai === 'Đã duyệt').length;
+  const pendingYtuong = filteredYtuongList.filter(y => y.trang_thai === 'Đang thảo luận' || y.trang_thai === 'Mới tạo').length;
+
+  const totalMau = filteredMauList.length;
+  const approvedMau = filteredMauList.filter(m => m.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)' || m.danh_gia_xep_hang === 'Đạt').length;
+  const pendingMau = filteredMauList.filter(m => m.trang_thai_duyet === 'Chờ duyệt').length;
+
+  const totalPo = filteredDonHangList.length;
+  const totalQtyOrdered = filteredDonHangList.reduce((acc, d) => acc + (d.so_luong || 0), 0);
+  const totalPoValue = filteredDonHangList.reduce((acc, d) => acc + (d.tong_tien || 0), 0);
+  const totalDepositPaid = filteredDonHangList.reduce((acc, d) => acc + (d.tien_coc || 0), 0);
+  const warehouseReceivedCount = filteredDonHangList.filter(d => d.tinh_trang_cuoi === 'Đã về kho' || d.tinh_trang_cuoi === 'Đã hoàn thành').length;
+
+  // Kanban 5 stages based on filtered orders
   const kanbanColumns = [
     {
       id: 'st1',
       title: '1. Đặt hàng & Cọc',
       icon: Clock,
       color: 'blue',
-      items: donHangList.filter(d => Boolean(d.ngay_dat_hang) && !d.ngay_sx_xong)
+      items: filteredDonHangList.filter(d => Boolean(d.ngay_dat_hang) && !d.ngay_sx_xong)
     },
     {
       id: 'st2',
       title: '2. Đang sản xuất',
       icon: Factory,
       color: 'amber',
-      items: donHangList.filter(d => Boolean(d.ngay_sx_xong) && !d.ngay_gui_hang)
+      items: filteredDonHangList.filter(d => Boolean(d.ngay_sx_xong) && !d.ngay_gui_hang)
     },
     {
       id: 'st3',
       title: '3. Vận chuyển QT',
       icon: Truck,
       color: 'cyan',
-      items: donHangList.filter(d => Boolean(d.ngay_gui_hang) && !d.ngay_thong_quan)
+      items: filteredDonHangList.filter(d => Boolean(d.ngay_gui_hang) && !d.ngay_thong_quan)
     },
     {
       id: 'st4',
       title: '4. Đang thông quan',
       icon: CheckCircle2,
       color: 'indigo',
-      items: donHangList.filter(d => Boolean(d.ngay_thong_quan) && !d.ngay_kho_nhan)
+      items: filteredDonHangList.filter(d => Boolean(d.ngay_thong_quan) && !d.ngay_kho_nhan)
     },
     {
       id: 'st5',
       title: '5. Đã về kho',
       icon: Warehouse,
       color: 'emerald',
-      items: donHangList.filter(d => Boolean(d.ngay_kho_nhan))
+      items: filteredDonHangList.filter(d => Boolean(d.ngay_kho_nhan))
     }
   ];
 
   const handleExportSummary = () => {
     const headers = ['Mã PO', 'SKU', 'Tên sản phẩm', 'Nhà cung cấp', 'Số lượng', 'Đơn giá', 'Tổng tiền', 'Tiền cọc', 'Tình trạng cuối', 'Kế hoạch bán'];
-    const rows = donHangList.map(d => [
+    const rows = filteredDonHangList.map(d => [
       d.ma_po, d.sku, d.ten_sp, d.ten_ncc, d.so_luong, d.don_gia, d.tong_tien, d.tien_coc, d.tinh_trang_cuoi, d.ke_hoach_ban
     ]);
     exportToExcel([headers, ...rows], 'XNK_TONG_QUAN.xlsx', 'TONG_QUAN');
@@ -189,6 +294,90 @@ export function XnkTongQuanModule({ onNavigate }) {
           donhang: donHangList.length
         }}
       />
+
+      {/* Filter Toolbar for Overview Dashboard */}
+      <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+          {/* Search box */}
+          <div className="relative min-w-[190px] flex-1 max-w-xs">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Tìm mã PO, SKU, tên SP, NCC..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+          </div>
+
+          {/* Trạng thái đơn hàng PO */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+          >
+            <option value="ALL">Tất cả trạng thái PO</option>
+            <option value="Đang sản xuất">Đang sản xuất</option>
+            <option value="Đang vận chuyển">Đang vận chuyển</option>
+            <option value="Đang thông quan">Đang thông quan</option>
+            <option value="Đã về kho">Đã về kho</option>
+            <option value="Đã hoàn thành">Đã hoàn thành</option>
+          </select>
+
+          {/* Nhà cung cấp */}
+          <select
+            value={nccFilter}
+            onChange={(e) => setNccFilter(e.target.value)}
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer max-w-[170px] truncate"
+          >
+            <option value="ALL">Tất cả NCC</option>
+            {nccOptions.map(ncc => (
+              <option key={ncc} value={ncc}>{ncc}</option>
+            ))}
+          </select>
+
+          {/* Kế hoạch bán */}
+          <select
+            value={planFilter}
+            onChange={(e) => setPlanFilter(e.target.value)}
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+          >
+            <option value="ALL">Tất cả KH bán</option>
+            <option value="Bán ngay">Bán ngay</option>
+            <option value="Bán sau (Trữ kho)">Bán sau (Trữ kho)</option>
+          </select>
+
+          {/* Date Range */}
+          <div className="flex items-center gap-1">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              title="Từ ngày"
+              className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none w-31"
+            />
+            <span className="text-slate-400 text-xs">-</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              title="Đến ngày"
+              className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none w-31"
+            />
+          </div>
+        </div>
+
+        {/* Reset button */}
+        <button
+          type="button"
+          onClick={handleResetFilters}
+          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+          title="Đặt lại tất cả bộ lọc"
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+          <span>Đặt lại</span>
+        </button>
+      </div>
 
       {/* 2. Top Executive KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -423,7 +612,7 @@ export function XnkTongQuanModule({ onNavigate }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {donHangList.slice(0, 5).map(po => (
+                {filteredDonHangList.slice(0, 5).map(po => (
                   <tr key={po.ma_po} className="hover:bg-slate-50 transition">
                     <td className="py-2 font-semibold text-blue-700">{po.ma_po}</td>
                     <td className="py-2 font-medium text-slate-800">{po.ten_sp}</td>
@@ -466,7 +655,7 @@ export function XnkTongQuanModule({ onNavigate }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {ytuongList.slice(0, 5).map(yt => (
+                {filteredYtuongList.slice(0, 5).map(yt => (
                   <tr key={yt.id_y_tuong} className="hover:bg-slate-50 transition">
                     <td className="py-2 font-semibold text-blue-700">{yt.id_y_tuong}</td>
                     <td className="py-2 font-medium text-slate-800">{yt.ten_sp}</td>

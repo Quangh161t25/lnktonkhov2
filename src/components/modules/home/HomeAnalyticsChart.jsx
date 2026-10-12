@@ -25,6 +25,7 @@ import {
   LineChart, 
   Calendar, 
   Filter, 
+  Search,
   Package, 
   Users, 
   RotateCcw, 
@@ -67,6 +68,9 @@ export function HomeAnalyticsChart({ xuatData = [], nhapData = [], productData =
   const [datePreset, setDatePreset] = useState('30days');
   const [selectedProduct, setSelectedProduct] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [selectedWarehouse, setSelectedWarehouse] = useState('');
+  const [selectedLoaiHinh, setSelectedLoaiHinh] = useState('');
+  const [searchKeyword, setSearchKeyword] = useState('');
   const [ioFilter, setIoFilter] = useState('all'); // 'all' | 'xuat' | 'nhap'
   const [chartType, setChartType] = useState('bar'); // 'bar' | 'line'
   const [groupBy, setGroupBy] = useState('day'); // 'day' | 'month' | 'year'
@@ -171,6 +175,20 @@ export function HomeAnalyticsChart({ xuatData = [], nhapData = [], productData =
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [usersData, xuatData]);
 
+  // Autocomplete warehouse options from both xuat and nhap
+  const warehouseOptions = useMemo(() => {
+    const set = new Set();
+    (xuatData || []).slice(1).forEach(r => {
+      const kho = (r[11] || '').toString().trim();
+      if (kho) set.add(kho);
+    });
+    (nhapData || []).slice(1).forEach(r => {
+      const kho = (r[11] || '').toString().trim();
+      if (kho) set.add(kho);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [xuatData, nhapData]);
+
   // Reset filters
   const handleResetFilters = () => {
     const init = getInitialDates();
@@ -179,6 +197,9 @@ export function HomeAnalyticsChart({ xuatData = [], nhapData = [], productData =
     setDatePreset('30days');
     setSelectedProduct('');
     setSelectedCustomer('');
+    setSelectedWarehouse('');
+    setSelectedLoaiHinh('');
+    setSearchKeyword('');
     setIoFilter('all');
     setGroupBy('day');
     setMetricType('qty');
@@ -227,6 +248,25 @@ export function HomeAnalyticsChart({ xuatData = [], nhapData = [], productData =
 
         if (prodTarget) {
           if (!idSpLower.includes(prodTarget) && !tenSpLower.includes(prodTarget)) return;
+        }
+
+        // Warehouse filter
+        const kho = (row[11] || '').toString().trim();
+        if (selectedWarehouse && kho.toLowerCase() !== selectedWarehouse.toLowerCase()) return;
+
+        // Loại hình filter
+        const rawLoaiHinh = (row[14] || '').toString().trim();
+        const normLoaiHinh = rawLoaiHinh.toLowerCase().includes('bảo hành') || rawLoaiHinh.toUpperCase() === 'BH' ? 'Bảo hành' : 'Thường';
+        if (selectedLoaiHinh && normLoaiHinh.toLowerCase() !== selectedLoaiHinh.toLowerCase()) return;
+
+        // Keyword search filter (MDH, SKU, Tên SP, Ghi chú, Khách)
+        if (searchKeyword) {
+          const kw = searchKeyword.toLowerCase().trim();
+          const mdhVal = (row[3] || '').toString().toLowerCase();
+          const ghiChuVal = (row[13] || '').toString().toLowerCase();
+          if (!mdhVal.includes(kw) && !maKhLower.includes(kw) && !tenKhLower.includes(kw) && !idSpLower.includes(kw) && !tenSpLower.includes(kw) && !ghiChuVal.includes(kw)) {
+            return;
+          }
         }
 
         const slg = cleanNumber(row[8]) || 0;
@@ -307,6 +347,27 @@ export function HomeAnalyticsChart({ xuatData = [], nhapData = [], productData =
 
         if (prodTarget) {
           if (!idSpLower.includes(prodTarget) && !tenSpLower.includes(prodTarget)) return;
+        }
+
+        // Warehouse filter
+        const kho = (row[11] || '').toString().trim();
+        if (selectedWarehouse && kho.toLowerCase() !== selectedWarehouse.toLowerCase()) return;
+
+        // Loại hình filter
+        const rawLoaiHinh = (row[14] || '').toString().trim();
+        const normLoaiHinh = rawLoaiHinh.toLowerCase().includes('bảo hành') || rawLoaiHinh.toUpperCase() === 'BH' ? 'Bảo hành' : 'Thường';
+        if (selectedLoaiHinh && normLoaiHinh.toLowerCase() !== selectedLoaiHinh.toLowerCase()) return;
+
+        // Keyword search filter (MDH, SKU, Tên SP, Ghi chú, NCC)
+        if (searchKeyword) {
+          const kw = searchKeyword.toLowerCase().trim();
+          const mdhVal = (row[3] || '').toString().toLowerCase();
+          const maNccVal = (row[4] || '').toString().toLowerCase();
+          const tenNccVal = (row[5] || '').toString().toLowerCase();
+          const ghiChuVal = (row[13] || '').toString().toLowerCase();
+          if (!mdhVal.includes(kw) && !maNccVal.includes(kw) && !tenNccVal.includes(kw) && !idSpLower.includes(kw) && !tenSpLower.includes(kw) && !ghiChuVal.includes(kw)) {
+            return;
+          }
         }
 
         const slg = cleanNumber(row[8]) || 0;
@@ -416,7 +477,7 @@ export function HomeAnalyticsChart({ xuatData = [], nhapData = [], productData =
         ]
       }
     };
-  }, [xuatData, nhapData, dateFrom, dateTo, selectedProduct, selectedCustomer, groupBy, metricType, chartType, ioFilter]);
+  }, [xuatData, nhapData, dateFrom, dateTo, selectedProduct, selectedCustomer, selectedWarehouse, selectedLoaiHinh, searchKeyword, groupBy, metricType, chartType, ioFilter]);
 
   // Chart Options
   const chartOptions = useMemo(() => {
@@ -635,8 +696,43 @@ export function HomeAnalyticsChart({ xuatData = [], nhapData = [], productData =
             />
           </div>
 
-          {/* Product Filter */}
+          {/* Search Keyword */}
           <div className="relative min-w-[140px] flex-1">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+            <input
+              type="text"
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              placeholder="Tìm MDH, SP, ghi chú..."
+              className="w-full pl-8 pr-2.5 py-1.5 border border-slate-200 rounded-xl bg-white font-semibold text-slate-700 focus:ring-1 focus:ring-orange-500 outline-none text-xs"
+            />
+          </div>
+
+          {/* Warehouse Filter */}
+          <select
+            value={selectedWarehouse}
+            onChange={(e) => setSelectedWarehouse(e.target.value)}
+            className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-white font-semibold text-slate-700 focus:ring-1 focus:ring-orange-500 outline-none text-xs cursor-pointer"
+          >
+            <option value="">Tất cả kho</option>
+            {warehouseOptions.map(kho => (
+              <option key={kho} value={kho}>{kho}</option>
+            ))}
+          </select>
+
+          {/* Loại hình Filter */}
+          <select
+            value={selectedLoaiHinh}
+            onChange={(e) => setSelectedLoaiHinh(e.target.value)}
+            className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-white font-semibold text-slate-700 focus:ring-1 focus:ring-orange-500 outline-none text-xs cursor-pointer"
+          >
+            <option value="">Tất cả loại hình</option>
+            <option value="Thường">Thường</option>
+            <option value="Bảo hành">Bảo hành</option>
+          </select>
+
+          {/* Product Filter */}
+          <div className="relative min-w-[130px] flex-1">
             <input
               type="text"
               list="homeChartProductDatalist"
@@ -653,13 +749,13 @@ export function HomeAnalyticsChart({ xuatData = [], nhapData = [], productData =
           </div>
 
           {/* Customer / NPP Filter */}
-          <div className="relative min-w-[150px] flex-1">
+          <div className="relative min-w-[140px] flex-1">
             <input
               type="text"
               list="homeChartCustomerDatalist"
               value={selectedCustomer}
               onChange={(e) => setSelectedCustomer(e.target.value)}
-              placeholder="Lọc NPP / Khách hàng..."
+              placeholder="Lọc NPP / Khách..."
               className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl bg-white font-semibold text-slate-700 focus:ring-1 focus:ring-orange-500 outline-none text-xs"
             />
             <datalist id="homeChartCustomerDatalist">

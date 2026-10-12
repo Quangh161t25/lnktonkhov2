@@ -13,7 +13,8 @@ import {
   formatNumber, 
   formatCurrency, 
   cleanNumber, 
-  matchesSearch 
+  matchesSearch,
+  parseSimpleSheetDate
 } from '../../../utils/formatters';
 import { 
   Ship, 
@@ -24,6 +25,7 @@ import {
   Search, 
   Plus, 
   RotateCw, 
+  RotateCcw,
   Download, 
   Edit3, 
   Trash2, 
@@ -67,6 +69,12 @@ export function XnkModule({ onNavigate }) {
   const [activeTab, setActiveTab] = useState('ytuong');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [authorFilter, setAuthorFilter] = useState('ALL');
+  const [nccFilter, setNccFilter] = useState('ALL');
+  const [planFilter, setPlanFilter] = useState('ALL');
+  const [rankFilter, setRankFilter] = useState('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -100,7 +108,7 @@ export function XnkModule({ onNavigate }) {
   // Reset page when tab or search/filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchTerm, statusFilter]);
+  }, [activeTab, searchTerm, statusFilter, authorFilter, nccFilter, planFilter, rankFilter, dateFrom, dateTo]);
 
   // 1. Parsed Ý tưởng rows
   // Columns: ['id_y_tuong', 'ngay_tao', 'nguoi_tao', 'sku_du_kien', 'ten_sp', 'mo_ta', 'link_tham_khao', 'trang_thai', 'nguoi_duyet', 'ghi_chu']
@@ -179,10 +187,63 @@ export function XnkModule({ onNavigate }) {
     return map;
   }, [parsedYtuongList]);
 
+  // Unique authors & NCC options
+  const authorOptions = useMemo(() => {
+    const set = new Set();
+    parsedYtuongList.forEach(item => {
+      const author = (item.nguoi_tao || '').trim();
+      if (author) set.add(author);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [parsedYtuongList]);
+
+  const nccOptions = useMemo(() => {
+    const set = new Set();
+    parsedMauList.forEach(item => {
+      const ncc = (item.ten_ncc || '').trim();
+      if (ncc) set.add(ncc);
+    });
+    parsedDonHangList.forEach(item => {
+      const ncc = (item.ten_ncc || '').trim();
+      if (ncc) set.add(ncc);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [parsedMauList, parsedDonHangList]);
+
+  // Date range checking helper
+  const isDateInRange = (dateStr, from, to) => {
+    if (!from && !to) return true;
+    if (!dateStr) return false;
+    const d = parseSimpleSheetDate(dateStr);
+    if (!d || Number.isNaN(d.getTime())) return false;
+    if (from) {
+      const dFrom = new Date(`${from}T00:00:00`);
+      if (d < dFrom) return false;
+    }
+    if (to) {
+      const dTo = new Date(`${to}T23:59:59.999`);
+      if (d > dTo) return false;
+    }
+    return true;
+  };
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('ALL');
+    setAuthorFilter('ALL');
+    setNccFilter('ALL');
+    setPlanFilter('ALL');
+    setRankFilter('ALL');
+    setDateFrom('');
+    setDateTo('');
+  };
+
   // Filtered Ý tưởng
   const filteredYtuong = useMemo(() => {
     return parsedYtuongList.filter(item => {
       if (statusFilter !== 'ALL' && item.trang_thai !== statusFilter) return false;
+      if (authorFilter !== 'ALL' && item.nguoi_tao !== authorFilter) return false;
+      if (!isDateInRange(item.ngay_tao, dateFrom, dateTo)) return false;
       if (searchTerm) {
         const match = 
           matchesSearch(item.id_y_tuong, searchTerm) ||
@@ -193,12 +254,15 @@ export function XnkModule({ onNavigate }) {
       }
       return true;
     });
-  }, [parsedYtuongList, statusFilter, searchTerm]);
+  }, [parsedYtuongList, statusFilter, authorFilter, dateFrom, dateTo, searchTerm]);
 
   // Filtered Mẫu
   const filteredMau = useMemo(() => {
     return parsedMauList.filter(item => {
       if (statusFilter !== 'ALL' && item.trang_thai_duyet !== statusFilter) return false;
+      if (rankFilter !== 'ALL' && (item.danh_gia_xep_hang || 'Chưa đánh giá') !== rankFilter) return false;
+      if (nccFilter !== 'ALL' && item.ten_ncc !== nccFilter) return false;
+      if (!isDateInRange(item.ngay_dat_mau || item.ngay_nhan_mau, dateFrom, dateTo)) return false;
       if (searchTerm) {
         const relatedIdea = ytuongMap[item.id_y_tuong];
         const match = 
@@ -211,12 +275,15 @@ export function XnkModule({ onNavigate }) {
       }
       return true;
     });
-  }, [parsedMauList, ytuongMap, statusFilter, searchTerm]);
+  }, [parsedMauList, ytuongMap, statusFilter, rankFilter, nccFilter, dateFrom, dateTo, searchTerm]);
 
   // Filtered Đơn PO
   const filteredDonHang = useMemo(() => {
     return parsedDonHangList.filter(item => {
-      if (statusFilter !== 'ALL' && item.tinh_trang_cuoi !== statusFilter && item.ke_hoach_ban !== statusFilter) return false;
+      if (statusFilter !== 'ALL' && item.tinh_trang_cuoi !== statusFilter) return false;
+      if (nccFilter !== 'ALL' && item.ten_ncc !== nccFilter) return false;
+      if (planFilter !== 'ALL' && item.ke_hoach_ban !== planFilter) return false;
+      if (!isDateInRange(item.ngay_dat_hang || item.ngay_kho_nhan, dateFrom, dateTo)) return false;
       if (searchTerm) {
         const match = 
           matchesSearch(item.ma_po, searchTerm) ||
@@ -228,7 +295,26 @@ export function XnkModule({ onNavigate }) {
       }
       return true;
     });
-  }, [parsedDonHangList, statusFilter, searchTerm]);
+  }, [parsedDonHangList, statusFilter, nccFilter, planFilter, dateFrom, dateTo, searchTerm]);
+
+  // Filtered Tiến độ 5 chặng (dành cho Tab 4 Kanban)
+  const filteredTiendo = useMemo(() => {
+    return parsedDonHangList.filter(item => {
+      if (nccFilter !== 'ALL' && item.ten_ncc !== nccFilter) return false;
+      if (planFilter !== 'ALL' && item.ke_hoach_ban !== planFilter) return false;
+      if (!isDateInRange(item.ngay_dat_hang || item.ngay_kho_nhan, dateFrom, dateTo)) return false;
+      if (searchTerm) {
+        const match = 
+          matchesSearch(item.ma_po, searchTerm) ||
+          matchesSearch(item.sku, searchTerm) ||
+          matchesSearch(item.ten_sp, searchTerm) ||
+          matchesSearch(item.ten_ncc, searchTerm) ||
+          matchesSearch(item.tracking_van_chuyen, searchTerm);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [parsedDonHangList, nccFilter, planFilter, dateFrom, dateTo, searchTerm]);
 
   // Handle Tab-specific current items
   const currentTotal = activeTab === 'ytuong' 
@@ -266,6 +352,12 @@ export function XnkModule({ onNavigate }) {
         m.id_mau, m.id_y_tuong, m.ten_ncc, m.lien_he_ncc, m.gia_mau, m.ngay_dat_mau, m.ngay_nhan_mau, m.link_anh_mau, m.danh_gia_cai_tien, m.danh_gia_xep_hang, m.trang_thai_duyet, m.ghi_chu
       ]);
       exportToExcel([headers, ...rows], 'XNK_MAU.xlsx', 'MAU_THU');
+    } else if (activeTab === 'tiendo') {
+      const headers = ['Mã PO', 'Mã mẫu', 'SKU', 'Tên sản phẩm', 'Nhà cung cấp', 'Số lượng', 'Đơn giá', 'Tổng tiền', 'Ngày đặt/cọc', 'Ngày SX xong', 'Tracking', 'Ngày gửi hàng', 'Ngày thông quan', 'Ngày kho nhận', 'Kế hoạch bán', 'Tình trạng cuối'];
+      const rows = filteredTiendo.map(d => [
+        d.ma_po, d.id_mau, d.sku, d.ten_sp, d.ten_ncc, d.so_luong, d.don_gia, d.tong_tien, d.ngay_dat_hang, d.ngay_sx_xong, d.tracking_van_chuyen, d.ngay_gui_hang, d.ngay_thong_quan, d.ngay_kho_nhan, d.ke_hoach_ban, d.tinh_trang_cuoi
+      ]);
+      exportToExcel([headers, ...rows], 'XNK_TIEN_DO_5_CHANG.xlsx', 'TIEN_DO');
     } else {
       const headers = ['Mã PO', 'Mã mẫu', 'SKU', 'Tên sản phẩm', 'Nhà cung cấp', 'Số lượng', 'Đơn giá', 'Tổng tiền', 'Tiền cọc', 'Ngày đặt/cọc', 'Ngày SX xong', 'Tracking', 'Ngày gửi hàng', 'Ngày thông quan', 'Ngày kho nhận', 'SL thực nhận', 'Kế hoạch bán', 'Tình trạng cuối', 'Ghi chú'];
       const rows = filteredDonHang.map(d => [
@@ -507,9 +599,10 @@ export function XnkModule({ onNavigate }) {
       )}
 
       {/* 4. SEARCH & STATUS FILTER TOOLBAR */}
-      {activeTab !== 'tiendo' && (
-        <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="relative w-full sm:w-72">
+      <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+          {/* Keyword Search */}
+          <div className="relative min-w-[190px] flex-1 max-w-xs">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
@@ -518,7 +611,9 @@ export function XnkModule({ onNavigate }) {
                   ? 'Tìm SKU, tên SP, người tạo...' 
                   : activeTab === 'mau' 
                   ? 'Tìm mã mẫu, tên NCC, SP...' 
-                  : 'Tìm mã PO, SKU, tên SP, tracking...'
+                  : activeTab === 'donhang'
+                  ? 'Tìm mã PO, SKU, tên SP, tracking...'
+                  : 'Tìm mã PO, SKU, tên SP, NCC...'
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -526,10 +621,8 @@ export function XnkModule({ onNavigate }) {
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-xs font-semibold text-slate-500 flex items-center gap-1 whitespace-nowrap">
-              <Filter className="w-3.5 h-3.5" /> Lọc trạng thái:
-            </span>
+          {/* Status Filter (not used on tiendo) */}
+          {activeTab !== 'tiendo' && (
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -558,14 +651,98 @@ export function XnkModule({ onNavigate }) {
                   <option value="Đang thông quan">Đang thông quan</option>
                   <option value="Đã về kho">Đã về kho</option>
                   <option value="Đã hoàn thành">Đã hoàn thành</option>
-                  <option value="Bán ngay">Kế hoạch: Bán ngay</option>
-                  <option value="Bán sau (Trữ kho)">Kế hoạch: Bán sau</option>
                 </>
               )}
             </select>
+          )}
+
+          {/* Tab 1: Author Filter */}
+          {activeTab === 'ytuong' && (
+            <select
+              value={authorFilter}
+              onChange={(e) => setAuthorFilter(e.target.value)}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+            >
+              <option value="ALL">Tất cả người tạo</option>
+              {authorOptions.map(author => (
+                <option key={author} value={author}>{author}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Tab 2: Rank Filter */}
+          {activeTab === 'mau' && (
+            <select
+              value={rankFilter}
+              onChange={(e) => setRankFilter(e.target.value)}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+            >
+              <option value="ALL">Tất cả xếp hạng</option>
+              <option value="Đạt">Đạt</option>
+              <option value="Cần cải tiến thêm">Cần cải tiến thêm</option>
+              <option value="Không đạt">Không đạt</option>
+              <option value="Chưa đánh giá">Chưa đánh giá</option>
+            </select>
+          )}
+
+          {/* Tab 2, 3, 4: NCC Filter */}
+          {(activeTab === 'mau' || activeTab === 'donhang' || activeTab === 'tiendo') && (
+            <select
+              value={nccFilter}
+              onChange={(e) => setNccFilter(e.target.value)}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer max-w-[170px] truncate"
+            >
+              <option value="ALL">Tất cả NCC</option>
+              {nccOptions.map(ncc => (
+                <option key={ncc} value={ncc}>{ncc}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Tab 3 & 4: Plan Filter */}
+          {(activeTab === 'donhang' || activeTab === 'tiendo') && (
+            <select
+              value={planFilter}
+              onChange={(e) => setPlanFilter(e.target.value)}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+            >
+              <option value="ALL">Tất cả KH bán</option>
+              <option value="Bán ngay">Bán ngay</option>
+              <option value="Bán sau (Trữ kho)">Bán sau (Trữ kho)</option>
+            </select>
+          )}
+
+          {/* Date range filter */}
+          <div className="flex items-center gap-1">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              title="Từ ngày"
+              className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none w-31"
+            />
+            <span className="text-slate-400 text-xs">-</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              title="Đến ngày"
+              className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none w-31"
+            />
           </div>
         </div>
-      )}
+
+        {/* Reset Filter Button */}
+        <button
+          type="button"
+          onClick={handleResetFilters}
+          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+          title="Đặt lại tất cả bộ lọc"
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+          <span>Đặt lại</span>
+        </button>
+      </div>
 
       {/* 5. TAB 1: BẢNG Ý TƯỞNG SẢN PHẨM */}
       {activeTab === 'ytuong' && (
@@ -1072,7 +1249,7 @@ export function XnkModule({ onNavigate }) {
               }
             ].map((col) => {
               const ColIcon = col.icon;
-              const columnOrders = parsedDonHangList.filter(col.filterFn);
+              const columnOrders = filteredTiendo.filter(col.filterFn);
 
               return (
                 <div key={col.id} className="bg-slate-50/70 border border-slate-200 rounded-2xl p-3 flex flex-col min-h-[450px]">
