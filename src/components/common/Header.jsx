@@ -137,10 +137,28 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
 
               <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
 
-              {/* Highlighted active pill */}
-              <span className="px-2.5 py-0.5 bg-blue-600 text-white rounded-md font-bold text-[11px] sm:text-xs shadow-xs tracking-tight shrink-0">
-                {badgeTitle}
-              </span>
+              {/* Check if XNK Sub-module */}
+              {activeModule.startsWith('xnk_') ? (
+                <>
+                  <button
+                    onClick={() => onNavigate('xnk')}
+                    className="text-slate-600 hover:text-blue-600 transition font-semibold shrink-0 cursor-pointer"
+                  >
+                    Xuất Nhập Khẩu
+                  </button>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span className="px-2.5 py-0.5 bg-blue-600 text-white rounded-md font-bold text-[11px] sm:text-xs shadow-xs tracking-tight shrink-0">
+                    {activeModule === 'xnk_ytuong' && 'Phiếu đề xuất / Ý tưởng'}
+                    {activeModule === 'xnk_mau' && 'Đặt mẫu & Đánh giá NCC'}
+                    {activeModule === 'xnk_donhang' && 'Đơn đặt hàng'}
+                    {activeModule === 'xnk_tiendo' && 'Tiến độ 5 chặng XNK'}
+                  </span>
+                </>
+              ) : (
+                <span className="px-2.5 py-0.5 bg-blue-600 text-white rounded-md font-bold text-[11px] sm:text-xs shadow-xs tracking-tight shrink-0">
+                  {badgeTitle}
+                </span>
+              )}
             </>
           )}
         </nav>

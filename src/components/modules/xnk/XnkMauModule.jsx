@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { XnkHeaderNav } from './XnkHeaderNav';
 import { XnkMauDrawer } from './XnkMauDrawer';
 import { Pagination } from '../../common/Pagination';
 import { exportToExcel } from '../../../services/excelService';
@@ -12,22 +11,25 @@ import {
   matchesSearch 
 } from '../../../utils/formatters';
 import { 
-  PackageSearch, 
+  ArrowLeft, 
   Search, 
   Filter, 
+  Plus, 
+  RotateCw, 
+  Download, 
   Edit3, 
   Trash2, 
   ExternalLink, 
   ShoppingCart, 
-  Building2,
-  Phone
+  List,
+  BarChart3,
+  PackageSearch
 } from 'lucide-react';
 
 export function XnkMauModule({ onNavigate }) {
   const { 
     xnkYtuongData, 
     xnkMauData, 
-    xnkDonHangData, 
     fetchModule, 
     deleteRow,
     loadingModules 
@@ -36,8 +38,15 @@ export function XnkMauModule({ onNavigate }) {
   const { currentUser, hasActionPermission } = useAuth();
   const canManage = hasActionPermission('xnk.manage') || currentUser?.role === 'ADMIN';
 
+  // Sub-tabs: [Danh sách] vs [Thống kê]
+  const [activeSubTab, setActiveSubTab] = useState('LIST');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [nccFilter, setNccFilter] = useState('ALL');
+
+  // Checkbox row selection
+  const [selectedIds, setSelectedIds] = useState([]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -54,7 +63,7 @@ export function XnkMauModule({ onNavigate }) {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter]);
+  }, [searchTerm, statusFilter, nccFilter]);
 
   // Parsed Ý tưởng
   const ytuongList = useMemo(() => {
@@ -94,10 +103,20 @@ export function XnkMauModule({ onNavigate }) {
     })).filter(i => i.id_mau || i.ten_ncc);
   }, [xnkMauData]);
 
+  // Distinct NCC options
+  const nccOptions = useMemo(() => {
+    const set = new Set();
+    mauList.forEach(item => {
+      if (item.ten_ncc) set.add(item.ten_ncc);
+    });
+    return Array.from(set);
+  }, [mauList]);
+
   // Filtered
   const filteredList = useMemo(() => {
     return mauList.filter(item => {
       if (statusFilter !== 'ALL' && item.trang_thai_duyet !== statusFilter && item.danh_gia_xep_hang !== statusFilter) return false;
+      if (nccFilter !== 'ALL' && item.ten_ncc !== nccFilter) return false;
       if (searchTerm) {
         const relatedIdea = ytuongMap[item.id_y_tuong];
         const match = 
@@ -110,13 +129,27 @@ export function XnkMauModule({ onNavigate }) {
       }
       return true;
     });
-  }, [mauList, ytuongMap, statusFilter, searchTerm]);
+  }, [mauList, ytuongMap, statusFilter, nccFilter, searchTerm]);
 
   // Paginated
   const paginatedList = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredList.slice(start, start + itemsPerPage);
   }, [filteredList, currentPage, itemsPerPage]);
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedIds(paginatedList.map(i => i.id_mau));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleToggleSelect = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
 
   const handleExportExcel = () => {
     const headers = ['Mã mẫu', 'Mã ý tưởng', 'Tên NCC', 'Liên hệ NCC', 'Giá mẫu', 'Ngày đặt', 'Ngày nhận', 'Link ảnh', 'Đánh giá cải tiến', 'Xếp hạng', 'Trạng thái duyệt', 'Ghi chú'];
@@ -138,237 +171,327 @@ export function XnkMauModule({ onNavigate }) {
 
   return (
     <div className="space-y-3">
-      {/* 1. Header Nav */}
-      <XnkHeaderNav
-        activeKey="xnk_mau"
-        onNavigate={onNavigate}
-        onRefresh={() => fetchModule('xnk_mau', true)}
-        onExportExcel={handleExportExcel}
-        onAddNew={canManage ? () => { setSelectedItem(null); setIsDrawerOpen(true); } : null}
-        addButtonLabel="Đặt Hàng Mẫu Mới"
-        isLoading={loadingModules.xnk_mau}
-        counts={{
-          ytuong: (xnkYtuongData?.length > 1 ? xnkYtuongData.length - 1 : 0),
-          mau: mauList.length,
-          donhang: (xnkDonHangData?.length > 1 ? xnkDonHangData.length - 1 : 0)
-        }}
-      />
+      {/* 1. Sub-Tabs Header (matching Screenshot 2: [Danh sách] vs [Thống kê]) */}
+      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveSubTab('LIST')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeSubTab === 'LIST'
+                ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <List className="w-4 h-4" />
+            <span>Danh sách</span>
+          </button>
 
-      {/* 2. KPI Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-slate-500">Tổng mẫu đã đặt</span>
-          <div className="text-lg font-bold text-slate-800 mt-0.5">{mauList.length}</div>
+          <button
+            onClick={() => setActiveSubTab('STATS')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeSubTab === 'STATS'
+                ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Thống kê</span>
+          </button>
         </div>
-        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-amber-600">Chờ Sếp duyệt</span>
-          <div className="text-lg font-bold text-amber-600 mt-0.5">
-            {mauList.filter(m => m.trang_thai_duyet === 'Chờ duyệt').length}
-          </div>
-        </div>
-        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-emerald-600">Mẫu ĐẠT (Cho phép đặt)</span>
-          <div className="text-lg font-bold text-emerald-600 mt-0.5">
-            {mauList.filter(m => m.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)' || m.danh_gia_xep_hang === 'Đạt').length}
-          </div>
-        </div>
-        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-rose-600">Không đạt / Cần sửa</span>
-          <div className="text-lg font-bold text-rose-600 mt-0.5">
-            {mauList.filter(m => m.danh_gia_xep_hang === 'Không đạt' || m.danh_gia_xep_hang === 'Cần cải tiến thêm').length}
-          </div>
+
+        <div className="text-xs font-medium text-slate-500">
+          Tổng cộng: <strong className="text-slate-800">{filteredList.length}</strong> mẫu thử
         </div>
       </div>
 
-      {/* 3. Search & Filter Bar */}
-      <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Tìm mã mẫu, tên NCC, SP..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          />
-        </div>
+      {/* 2. Control Toolbar (matching Screenshot 2) */}
+      <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Nút Quay lại về Hub XNK */}
+          <button
+            onClick={() => onNavigate('xnk')}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+            title="Quay lại Hub Xuất Nhập Khẩu"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-500" />
+            <span>Quay lại</span>
+          </button>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs font-semibold text-slate-500 flex items-center gap-1 whitespace-nowrap">
-            <Filter className="w-3.5 h-3.5" /> Lọc trạng thái:
-          </span>
+          {/* Ô tìm kiếm */}
+          <div className="relative w-48 sm:w-64">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Tìm kiếm . . ."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+          </div>
+
+          {/* Filter 1: Trạng thái / Xếp hạng */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
           >
-            <option value="ALL">Tất cả trạng thái</option>
+            <option value="ALL">🏷️ Trạng thái duyệt / Xếp hạng</option>
             <option value="Chờ duyệt">Chờ duyệt</option>
             <option value="Đã duyệt (Cho phép đặt thật)">Đã duyệt</option>
             <option value="Đạt">Xếp hạng: Đạt</option>
             <option value="Cần cải tiến thêm">Xếp hạng: Cần cải tiến</option>
             <option value="Không đạt">Xếp hạng: Không đạt</option>
           </select>
+
+          {/* Filter 2: Nhà cung cấp */}
+          <select
+            value={nccFilter}
+            onChange={(e) => setNccFilter(e.target.value)}
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+          >
+            <option value="ALL">🏢 Nhà cung cấp (Tất cả)</option>
+            {nccOptions.map(ncc => (
+              <option key={ncc} value={ncc}>{ncc}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Right Actions */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchModule('xnk_mau', true)}
+            disabled={loadingModules.xnk_mau}
+            className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+            title="Làm mới dữ liệu"
+          >
+            <RotateCw className={`w-4 h-4 ${loadingModules.xnk_mau ? 'animate-spin' : ''}`} />
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Xuất Excel</span>
+          </button>
+
+          {canManage && (
+            <button
+              onClick={() => { setSelectedItem(null); setIsDrawerOpen(true); }}
+              className="px-3.5 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Đặt mẫu mới</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 4. Data Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 select-none">
-                <th className="py-2.5 px-3 whitespace-nowrap">Mã mẫu</th>
-                <th className="py-2.5 px-3 min-w-[160px]">Sản phẩm & Ý tưởng</th>
-                <th className="py-2.5 px-3 min-w-[150px]">Nhà cung cấp / Xưởng</th>
-                <th className="py-2.5 px-3 whitespace-nowrap text-right">Giá mẫu</th>
-                <th className="py-2.5 px-3 whitespace-nowrap">Ngày đặt / Nhận</th>
-                <th className="py-2.5 px-3 whitespace-nowrap text-center">Ảnh mẫu thực tế</th>
-                <th className="py-2.5 px-3 min-w-[180px]">Đánh giá cải tiến</th>
-                <th className="py-2.5 px-3 whitespace-nowrap text-center">Xếp hạng</th>
-                <th className="py-2.5 px-3 whitespace-nowrap text-center">Sếp duyệt</th>
-                <th className="py-2.5 px-3 whitespace-nowrap text-center">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginatedList.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-8 text-center text-slate-400">
-                    Không tìm thấy dữ liệu đặt hàng mẫu nào
-                  </td>
+      {/* 3. Content View */}
+      {activeSubTab === 'STATS' ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="p-3 bg-slate-50 rounded-xl">
+            <span className="text-xs text-slate-500 font-semibold">Tổng mẫu đã đặt</span>
+            <div className="text-2xl font-black text-slate-800 mt-1">{mauList.length}</div>
+          </div>
+          <div className="p-3 bg-amber-50 rounded-xl">
+            <span className="text-xs text-amber-600 font-semibold">Chờ Sếp duyệt</span>
+            <div className="text-2xl font-black text-amber-600 mt-1">
+              {mauList.filter(m => m.trang_thai_duyet === 'Chờ duyệt').length}
+            </div>
+          </div>
+          <div className="p-3 bg-emerald-50 rounded-xl">
+            <span className="text-xs text-emerald-600 font-semibold">Mẫu ĐẠT</span>
+            <div className="text-2xl font-black text-emerald-600 mt-1">
+              {mauList.filter(m => m.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)' || m.danh_gia_xep_hang === 'Đạt').length}
+            </div>
+          </div>
+          <div className="p-3 bg-rose-50 rounded-xl">
+            <span className="text-xs text-rose-600 font-semibold">Không đạt / Cần sửa</span>
+            <div className="text-2xl font-black text-rose-600 mt-1">
+              {mauList.filter(m => m.danh_gia_xep_hang === 'Không đạt' || m.danh_gia_xep_hang === 'Cần cải tiến thêm').length}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* 4. Data Table */
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200 select-none">
+                  <th className="py-2.5 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={paginatedList.length > 0 && selectedIds.length === paginatedList.length}
+                      onChange={handleSelectAll}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                    />
+                  </th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Mã mẫu</th>
+                  <th className="py-2.5 px-3 min-w-[170px]">Sản phẩm & Ý tưởng</th>
+                  <th className="py-2.5 px-3 min-w-[150px]">Nhà cung cấp / Xưởng</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap text-right">Giá mẫu</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Ngày đặt / Nhận</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Ảnh thực tế</th>
+                  <th className="py-2.5 px-3 min-w-[180px]">Đánh giá cải tiến</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Xếp hạng</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Sếp duyệt</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Thao tác</th>
                 </tr>
-              ) : (
-                paginatedList.map((item) => {
-                  const relatedIdea = ytuongMap[item.id_y_tuong];
-                  const isApproved = item.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)' || item.danh_gia_xep_hang === 'Đạt';
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginatedList.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="py-8 text-center text-slate-400">
+                      Không tìm thấy dữ liệu đặt hàng mẫu nào
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedList.map((item) => {
+                    const relatedIdea = ytuongMap[item.id_y_tuong];
+                    const isApproved = item.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)' || item.danh_gia_xep_hang === 'Đạt';
+                    const isSelected = selectedIds.includes(item.id_mau);
 
-                  return (
-                    <tr key={item.id_mau} className="hover:bg-slate-50/70 transition">
-                      <td className="py-2.5 px-3 font-semibold text-blue-700 whitespace-nowrap">
-                        {item.id_mau}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="font-bold text-slate-900">
-                          {relatedIdea?.ten_sp || 'Chưa liên kết'}
-                        </div>
-                        <div className="text-[11px] text-slate-500">
-                          SKU: {relatedIdea?.sku_du_kien || item.id_y_tuong || '-'}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="font-semibold text-slate-800">{item.ten_ncc}</div>
-                        {item.lien_he_ncc && (
-                          <div className="text-[11px] text-slate-500">{item.lien_he_ncc}</div>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-slate-700 whitespace-nowrap">
-                        {item.gia_mau ? formatCurrency(item.gia_mau) : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
-                        <div>Đặt: {item.ngay_dat_mau ? formatDateVN(item.ngay_dat_mau) : '-'}</div>
-                        <div className="text-[11px] text-slate-500">
-                          Nhận: {item.ngay_nhan_mau ? formatDateVN(item.ngay_nhan_mau) : 'Chưa nhận'}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {item.link_anh_mau ? (
-                          <a 
-                            href={item.link_anh_mau} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            className="inline-block p-1 bg-slate-100 rounded-lg hover:ring-2 hover:ring-blue-400 transition"
-                          >
-                            <img
-                              src={item.link_anh_mau}
-                              alt="Mẫu"
-                              className="w-10 h-10 object-cover rounded"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
+                    return (
+                      <tr key={item.id_mau} className={`hover:bg-slate-50/70 transition ${isSelected ? 'bg-blue-50/40' : ''}`}>
+                        <td className="py-2.5 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(item.id_mau)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                          />
+                        </td>
+                        {/* Mã mẫu badge */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[11px]">
+                            {item.id_mau}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-slate-900">
+                            {relatedIdea?.ten_sp || 'Chưa liên kết'}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            SKU: {relatedIdea?.sku_du_kien || item.id_y_tuong || '-'}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-slate-800">{item.ten_ncc}</div>
+                          {item.lien_he_ncc && (
+                            <div className="text-[11px] text-slate-500">{item.lien_he_ncc}</div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-700 whitespace-nowrap">
+                          {item.gia_mau ? formatCurrency(item.gia_mau) : '-'}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                          <div>Đặt: {item.ngay_dat_mau ? formatDateVN(item.ngay_dat_mau) : '-'}</div>
+                          <div className="text-[11px] text-slate-500">
+                            Nhận: {item.ngay_nhan_mau ? formatDateVN(item.ngay_nhan_mau) : 'Chưa nhận'}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {item.link_anh_mau ? (
+                            <a 
+                              href={item.link_anh_mau} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="inline-block p-0.5 bg-slate-100 rounded-lg hover:ring-2 hover:ring-blue-400 transition"
+                            >
+                              <img
+                                src={item.link_anh_mau}
+                                alt="Mẫu"
+                                className="w-9 h-9 object-cover rounded"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            </a>
+                          ) : (
+                            <span className="text-slate-400 italic">Chưa có</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700">
+                          <div className="line-clamp-2" title={item.danh_gia_cai_tien}>
+                            {item.danh_gia_cai_tien || '-'}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                            item.danh_gia_xep_hang === 'Đạt'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : item.danh_gia_xep_hang === 'Không đạt'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {item.danh_gia_xep_hang}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                            item.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : item.trang_thai_duyet === 'Từ chối'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {item.trang_thai_duyet}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1">
+                            {isApproved && (
+                              <button
+                                onClick={() => onNavigate('xnk_donhang')}
+                                title="Tạo đơn PO từ mẫu đạt này"
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
+                              >
+                                <ShoppingCart className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                setSelectedItem(item);
+                                setIsDrawerOpen(true);
                               }}
-                            />
-                          </a>
-                        ) : (
-                          <span className="text-slate-400 italic">Chưa có</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-700">
-                        <div className="line-clamp-2" title={item.danh_gia_cai_tien}>
-                          {item.danh_gia_cai_tien || '-'}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          item.danh_gia_xep_hang === 'Đạt'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : item.danh_gia_xep_hang === 'Không đạt'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {item.danh_gia_xep_hang}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          item.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : item.trang_thai_duyet === 'Từ chối'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {item.trang_thai_duyet}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
-                          {isApproved && (
-                            <button
-                              onClick={() => onNavigate('xnk_donhang')}
-                              title="Tạo đơn PO từ mẫu đạt này"
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
+                              title="Sửa mẫu"
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
                             >
-                              <ShoppingCart className="w-4 h-4" />
+                              <Edit3 className="w-4 h-4" />
                             </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              setSelectedItem(item);
-                              setIsDrawerOpen(true);
-                            }}
-                            title="Sửa mẫu"
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          {canManage && (
-                            <button
-                              onClick={() => handleDelete(item._sheetRow, item.id_mau)}
-                              title="Xóa mẫu"
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                            {canManage && (
+                              <button
+                                onClick={() => handleDelete(item._sheetRow, item.id_mau)}
+                                title="Xóa mẫu"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        {/* 5. Pagination - Fixed pageSize & onPageSizeChange props */}
-        <div className="p-3 border-t border-slate-100">
-          <Pagination
-            currentPage={currentPage}
-            totalItems={filteredList.length}
-            pageSize={itemsPerPage}
-            onPageChange={setCurrentPage}
-            onPageSizeChange={setItemsPerPage}
-          />
+          {/* 5. Pagination */}
+          <div className="p-3 border-t border-slate-100">
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredList.length}
+              pageSize={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setItemsPerPage}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Drawer */}
       <XnkMauDrawer

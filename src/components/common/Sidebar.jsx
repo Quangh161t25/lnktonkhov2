@@ -56,26 +56,7 @@ export function Sidebar({ activeModule, onSelectModule, isCollapsed, onToggleCol
   const { canAccessModule } = useAuth();
   const { appSettings } = useSettings();
 
-  const isXnkActive = activeModule === 'xnk' || activeModule.startsWith('xnk_');
-  const [isXnkExpanded, setIsXnkExpanded] = React.useState(isXnkActive);
-
-  React.useEffect(() => {
-    if (isXnkActive) {
-      setIsXnkExpanded(true);
-    }
-  }, [isXnkActive]);
-
-  const xnkSubModules = [
-    { key: 'xnk', name: 'Tổng quan XNK', icon: Ship },
-    { key: 'xnk_ytuong', name: 'Ý tưởng sản phẩm', icon: Lightbulb },
-    { key: 'xnk_mau', name: 'Đặt mẫu & NCC', icon: PackageSearch },
-    { key: 'xnk_donhang', name: 'Đơn hàng PO', icon: ClipboardList }
-  ];
-
-  // Filter out xnk sub-keys from primary list, as they are rendered under XNK parent group
-  const primaryModules = MODULE_DEFINITIONS.filter(m => 
-    !m.key.startsWith('xnk_') && canAccessModule(m.key)
-  );
+  const accessibleModules = MODULE_DEFINITIONS.filter(m => canAccessModule(m.key));
 
   return (
     <aside
@@ -114,86 +95,9 @@ export function Sidebar({ activeModule, onSelectModule, isCollapsed, onToggleCol
 
       {/* Navigation List */}
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 custom-scrollbar bg-white">
-        {primaryModules.map((item) => {
-          // Special handling for XNK group
-          if (item.key === 'xnk') {
-            const hasXnkAccess = canAccessModule('xnk');
-            if (!hasXnkAccess) return null;
-
-            if (isCollapsed) {
-              return (
-                <button
-                  key="xnk-collapsed"
-                  onClick={() => onSelectModule('xnk')}
-                  title="Xuất Nhập Khẩu"
-                  className={`w-full flex items-center justify-center p-2.5 rounded-xl font-medium text-xs transition-all cursor-pointer ${
-                    isXnkActive
-                      ? 'bg-blue-50 text-blue-600 font-bold border border-blue-100 shadow-sm'
-                      : 'text-slate-600 hover:text-blue-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <Ship className={`w-5 h-5 shrink-0 ${isXnkActive ? 'text-blue-600 stroke-[2.2]' : 'text-slate-400'}`} />
-                </button>
-              );
-            }
-
-            return (
-              <div key="xnk-group" className="space-y-1">
-                {/* Parent Group Button */}
-                <div
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all cursor-pointer ${
-                    isXnkActive
-                      ? 'bg-blue-50/70 text-blue-700 font-bold border border-blue-100'
-                      : 'text-slate-700 hover:text-blue-600 hover:bg-slate-50'
-                  }`}
-                  onClick={() => {
-                    if (!isXnkExpanded) {
-                      setIsXnkExpanded(true);
-                      onSelectModule('xnk');
-                    } else {
-                      setIsXnkExpanded(!isXnkExpanded);
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-3.5 truncate">
-                    <Ship className={`w-5 h-5 shrink-0 ${isXnkActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                    <span className="truncate text-left">Xuất Nhập Khẩu</span>
-                  </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
-                    isXnkExpanded ? 'transform rotate-180 text-blue-600' : ''
-                  }`} />
-                </div>
-
-                {/* Sub-modules list */}
-                {isXnkExpanded && (
-                  <div className="pl-4 pr-1 py-1 space-y-1 border-l-2 border-blue-100 ml-4">
-                    {xnkSubModules.map(sub => {
-                      const SubIcon = sub.icon;
-                      const isSubActive = activeModule === sub.key;
-
-                      return (
-                        <button
-                          key={sub.key}
-                          onClick={() => onSelectModule(sub.key)}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-                            isSubActive
-                              ? 'bg-blue-600 text-white font-bold shadow-xs'
-                              : 'text-slate-600 hover:text-blue-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? 'text-white' : 'text-slate-400'}`} />
-                          <span className="truncate text-left">{sub.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          }
-
+        {accessibleModules.map((item) => {
           const IconComponent = ICON_MAP[item.icon] || Package;
-          const isActive = activeModule === item.key;
+          const isActive = activeModule === item.key || (item.key === 'xnk' && activeModule.startsWith('xnk_'));
 
           return (
             <button

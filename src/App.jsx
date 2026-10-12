@@ -23,21 +23,39 @@ import { DoisoatModule } from './components/modules/doisoat/DoisoatModule';
 import { NhanvienModule } from './components/modules/nhanvien/NhanvienModule';
 import { KhachhangModule } from './components/modules/khachhang/KhachhangModule';
 import { DubaonhapModule } from './components/modules/dubaonhap/DubaonhapModule';
-import { XnkTongQuanModule } from './components/modules/xnk/XnkTongQuanModule';
+import { XnkHubModule } from './components/modules/xnk/XnkHubModule';
 import { XnkYtuongModule } from './components/modules/xnk/XnkYtuongModule';
 import { XnkMauModule } from './components/modules/xnk/XnkMauModule';
 import { XnkDonHangModule } from './components/modules/xnk/XnkDonHangModule';
+import { XnkTienDoModule } from './components/modules/xnk/XnkTienDoModule';
 import { CaidatModule } from './components/modules/caidat/CaidatModule';
 
 const VALID_MODULES = [
   'home', 'tongquan', 'nhap', 'dukien', 'xuat', 'chuyenkho', 'sanpham',
   'sanphamkho', 'cngiasp', 'lendon', 'ton_npp', 'doisoat', 'nhanvien', 'khachhang',
-  'dubaonhap', 'xnk', 'xnk_ytuong', 'xnk_mau', 'xnk_donhang', 'caidat'
+  'dubaonhap', 'xnk', 'xnk_ytuong', 'xnk_mau', 'xnk_donhang', 'xnk_tiendo', 'caidat'
 ];
 
 function getModuleFromLocation() {
-  const path = window.location.pathname.replace(/^\/+/, '').split('/')[0].trim().toLowerCase();
-  return VALID_MODULES.includes(path) ? path : 'home';
+  const cleanPath = window.location.pathname.replace(/^\/+/, '').trim().toLowerCase();
+  if (cleanPath === 'xnk/y_tuong' || cleanPath === 'xnk/ytuong') return 'xnk_ytuong';
+  if (cleanPath === 'xnk/mau') return 'xnk_mau';
+  if (cleanPath === 'xnk/don_hang' || cleanPath === 'xnk/donhang') return 'xnk_donhang';
+  if (cleanPath === 'xnk/tien_do' || cleanPath === 'xnk/tiendo') return 'xnk_tiendo';
+  if (cleanPath === 'xnk') return 'xnk';
+
+  const first = cleanPath.split('/')[0];
+  return VALID_MODULES.includes(first) ? first : 'home';
+}
+
+function getPathForModule(mod) {
+  if (mod === 'home') return '/';
+  if (mod === 'xnk') return '/xnk';
+  if (mod === 'xnk_ytuong') return '/xnk/y_tuong';
+  if (mod === 'xnk_mau') return '/xnk/mau';
+  if (mod === 'xnk_donhang') return '/xnk/don_hang';
+  if (mod === 'xnk_tiendo') return '/xnk/tien_do';
+  return `/${mod}`;
 }
 
 export function App() {
@@ -59,7 +77,7 @@ export function App() {
   const navigateToModule = (mod, params = null) => {
     setNavParams(params);
     setActiveModule(mod);
-    const targetPath = mod === 'home' ? '/' : `/${mod}`;
+    const targetPath = getPathForModule(mod);
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
     }
@@ -88,13 +106,13 @@ export function App() {
       }
     } else {
       const allowed = getAllowedModules();
-      if (!allowed.includes(activeModule)) {
+      if (!allowed.includes(activeModule) && !activeModule.startsWith('xnk_')) {
         const fallback = allowed.includes('home') ? 'home' : (allowed[0] || 'home');
         setActiveModule(fallback);
-        const targetPath = fallback === 'home' ? '/' : `/${fallback}`;
+        const targetPath = getPathForModule(fallback);
         window.history.replaceState(null, '', targetPath);
       } else {
-        const targetPath = activeModule === 'home' ? '/' : `/${activeModule}`;
+        const targetPath = getPathForModule(activeModule);
         if (window.location.pathname !== targetPath) {
           window.history.replaceState(null, '', targetPath);
         }
@@ -174,7 +192,7 @@ export function App() {
             )}
 
             {activeModule === 'xnk' && (
-              <XnkTongQuanModule onNavigate={(mod) => navigateToModule(mod)} />
+              <XnkHubModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
 
             {activeModule === 'xnk_ytuong' && (
@@ -187,6 +205,10 @@ export function App() {
 
             {activeModule === 'xnk_donhang' && (
               <XnkDonHangModule onNavigate={(mod) => navigateToModule(mod)} />
+            )}
+
+            {activeModule === 'xnk_tiendo' && (
+              <XnkTienDoModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
 
             {activeModule === 'caidat' && <CaidatModule />}
