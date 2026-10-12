@@ -5,6 +5,8 @@ import { Pagination } from '../../common/Pagination';
 import { XnkNccDrawer } from './XnkNccDrawer';
 import { XnkChiTietModal } from './XnkChiTietModal';
 import { ExcelUploadModal } from '../../common/ExcelUploadModal';
+import { ColumnManagerModal } from '../../common/ColumnManagerModal';
+import { useColumnManager } from '../../../hooks/useColumnManager';
 import { exportToExcel, downloadModuleTemplate } from '../../../services/excelService';
 import { 
   formatCurrency, 
@@ -32,8 +34,21 @@ import {
   CheckCircle2,
   Award,
   TrendingUp,
-  Tag
+  Tag,
+  SlidersHorizontal
 } from 'lucide-react';
+
+const DEFAULT_XNK_NCC_COLUMNS = [
+  { key: 'id', label: 'Mã NCC', width: 110, align: 'left', format: 'bold' },
+  { key: 'name', label: 'Tên Nhà Cung Cấp / Xưởng', width: 240, align: 'left', format: 'default' },
+  { key: 'type', label: 'Phân loại', width: 140, align: 'left', format: 'badge' },
+  { key: 'contact', label: 'Liên hệ / Wechat / SĐT', width: 180, align: 'left', format: 'default' },
+  { key: 'so_mau', label: 'Mẫu thử', width: 120, align: 'center', format: 'default' },
+  { key: 'so_po', label: 'Đơn hàng PO', width: 120, align: 'center', format: 'default' },
+  { key: 'tong_tien_po', label: 'Tổng giá trị PO', width: 140, align: 'right', format: 'currency' },
+  { key: 'web_acc', label: 'Tài khoản Web', width: 120, align: 'center', format: 'default' },
+  { key: 'actions', label: 'Thao tác', width: 90, align: 'center', format: 'default' }
+];
 
 export function XnkNccModule({ onNavigate }) {
   const { 
@@ -50,6 +65,19 @@ export function XnkNccModule({ onNavigate }) {
 
   // Sub-tabs: [Danh sách] vs [Thống kê] (Screenshot 2)
   const [activeSubTab, setActiveSubTab] = useState('LIST'); // 'LIST' | 'STATS'
+
+  // Column Manager Hook
+  const {
+    columns,
+    visibleColumns,
+    isConfigModalOpen,
+    openConfigModal,
+    closeConfigModal,
+    toggleVisibility,
+    updateColumnProp,
+    moveColumn,
+    resetToDefault
+  } = useColumnManager('xnk_ncc', DEFAULT_XNK_NCC_COLUMNS);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -441,6 +469,17 @@ export function XnkNccModule({ onNavigate }) {
             <span>Mẫu Excel</span>
           </button>
 
+          {/* Nút Tùy chỉnh Cột */}
+          <button
+            type="button"
+            onClick={openConfigModal}
+            className="px-2.5 py-1.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            title="Tùy chỉnh cột hiển thị"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" />
+            <span>Cột</span>
+          </button>
+
           {/* Nút Làm mới */}
           <button
             onClick={() => {
@@ -507,21 +546,26 @@ export function XnkNccModule({ onNavigate }) {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 select-none">
-                <th className="py-2.5 px-3 whitespace-nowrap">Mã NCC</th>
-                <th className="py-2.5 px-3 min-w-[200px]">Tên Nhà Cung Cấp / Xưởng</th>
-                <th className="py-2.5 px-3 whitespace-nowrap">Phân loại</th>
-                <th className="py-2.5 px-3 min-w-[170px]">Liên hệ / Wechat / SĐT</th>
-                <th className="py-2.5 px-3 text-center whitespace-nowrap">Mẫu thử</th>
-                <th className="py-2.5 px-3 text-center whitespace-nowrap">Đơn hàng PO</th>
-                <th className="py-2.5 px-3 text-right whitespace-nowrap">Tổng giá trị PO</th>
-                <th className="py-2.5 px-3 text-center whitespace-nowrap">Tài khoản Web</th>
-                <th className="py-2.5 px-3 text-center whitespace-nowrap">Thao tác</th>
+                {visibleColumns.map((col) => {
+                  const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
+                  const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
+
+                  return (
+                    <th
+                      key={col.key}
+                      style={widthStyle}
+                      className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}
+                    >
+                      {col.label}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedList.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={visibleColumns.length} className="py-12 text-center text-slate-400">
                     <Building2 className="w-12 h-12 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-600">Chưa có Nhà Cung Cấp nào trong danh mục</p>
                     <p className="text-[11px] text-slate-400 mt-1">
@@ -549,114 +593,157 @@ export function XnkNccModule({ onNavigate }) {
                       }}
                       className="hover:bg-slate-50/70 transition cursor-pointer"
                     >
-                      <td className="py-2.5 px-3 font-extrabold text-blue-700 whitespace-nowrap">
-                        {item.id}
-                      </td>
-                      <td className="py-2.5 px-3 font-bold text-slate-900">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                            <Building2 className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <span className="text-slate-900 font-bold block">{item.name}</span>
-                            {item.note && (
-                              <span className="text-[11px] text-slate-400 font-normal block truncate max-w-[200px]" title={item.note}>
-                                {item.note}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 whitespace-nowrap">
-                        <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200">
-                          {item.type || 'KHÁCH HÀNG NCC'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        {item.contact ? (
-                          <div className="flex items-center gap-1.5">
-                            <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="font-medium text-slate-700">{item.contact}</span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Chưa có liên hệ</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        {item.so_mau > 0 ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNavigate('xnk_mau');
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-semibold text-[11px] transition cursor-pointer"
-                            title="Bấm để xem các mẫu của NCC này"
-                          >
-                            <span>{item.so_mau} mẫu</span>
-                            {item.so_mau_dat > 0 && (
-                              <span className="text-emerald-600 font-bold">({item.so_mau_dat} Đạt)</span>
-                            )}
-                          </button>
-                        ) : (
-                          <span className="text-slate-400 italic">-</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        {item.so_po > 0 ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNavigate('xnk_donhang');
-                            }}
-                            className="px-2.5 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] transition cursor-pointer"
-                            title="Bấm để xem các đơn PO của NCC này"
-                          >
-                            {item.so_po} đơn PO
-                          </button>
-                        ) : (
-                          <span className="text-slate-400 italic">-</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
-                        {item.tong_tien_po > 0 ? formatCurrency(item.tong_tien_po) : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        {item.password ? (
-                          <span className="text-emerald-600 font-semibold text-[11px]">Đã cấp quyền</span>
-                        ) : (
-                          <span className="text-slate-400 text-[11px]">Chưa cấp</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => {
-                              setEditUser({
-                                sheetRow: item.sheetRow,
-                                id: item.id,
-                                name: item.name,
-                                contact: item.contact,
-                                note: item.note,
-                                type: item.type,
-                                password: item.password
-                              });
-                              setIsDrawerOpen(true);
-                            }}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                            title="Sửa thông tin NCC"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
+                      {visibleColumns.map((col) => {
+                        const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
+                        const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
+                        let formatClass = '';
+                        if (col.format === 'bold') formatClass = 'font-bold text-slate-800';
+                        if (col.format === 'uppercase') formatClass = 'uppercase';
 
-                          <button
-                            onClick={() => handleDeleteNcc(item)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            title="Xóa NCC"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
+                        switch (col.key) {
+                          case 'id':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-extrabold text-blue-700 whitespace-nowrap ${alignClass}`}>
+                                {item.id}
+                              </td>
+                            );
+                          case 'name':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-bold text-slate-900 ${alignClass}`}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                    <Building2 className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-900 font-bold block">{item.name}</span>
+                                    {item.note && (
+                                      <span className="text-[11px] text-slate-400 font-normal block truncate max-w-[200px]" title={item.note}>
+                                        {item.note}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            );
+                          case 'type':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  {item.type || 'KHÁCH HÀNG NCC'}
+                                </span>
+                              </td>
+                            );
+                          case 'contact':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 text-slate-600 ${alignClass}`}>
+                                {item.contact ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <span className="font-medium text-slate-700">{item.contact}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 italic">Chưa có liên hệ</span>
+                                )}
+                              </td>
+                            );
+                          case 'so_mau':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                {item.so_mau > 0 ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onNavigate('xnk_mau');
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-semibold text-[11px] transition cursor-pointer"
+                                    title="Bấm để xem các mẫu của NCC này"
+                                  >
+                                    <span>{item.so_mau} mẫu</span>
+                                    {item.so_mau_dat > 0 && (
+                                      <span className="text-emerald-600 font-bold">({item.so_mau_dat} Đạt)</span>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400 italic">-</span>
+                                )}
+                              </td>
+                            );
+                          case 'so_po':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                {item.so_po > 0 ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onNavigate('xnk_donhang');
+                                    }}
+                                    className="px-2.5 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] transition cursor-pointer"
+                                    title="Bấm để xem các đơn PO của NCC này"
+                                  >
+                                    {item.so_po} đơn PO
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400 italic">-</span>
+                                )}
+                              </td>
+                            );
+                          case 'tong_tien_po':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-bold text-emerald-700 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                {item.tong_tien_po > 0 ? formatCurrency(item.tong_tien_po) : '-'}
+                              </td>
+                            );
+                          case 'web_acc':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                {item.password ? (
+                                  <span className="text-emerald-600 font-semibold text-[11px]">Đã cấp quyền</span>
+                                ) : (
+                                  <span className="text-slate-400 text-[11px]">Chưa cấp</span>
+                                )}
+                              </td>
+                            );
+                          case 'actions':
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => {
+                                      setEditUser({
+                                        sheetRow: item.sheetRow,
+                                        id: item.id,
+                                        name: item.name,
+                                        contact: item.contact,
+                                        note: item.note,
+                                        type: item.type,
+                                        password: item.password
+                                      });
+                                      setIsDrawerOpen(true);
+                                    }}
+                                    className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                    title="Sửa thông tin NCC"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeleteNcc(item)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                    title="Xóa NCC"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            );
+                          default:
+                            return (
+                              <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                {item[col.key] || '-'}
+                              </td>
+                            );
+                        }
+                      })}
                     </tr>
                   );
                 })
@@ -677,6 +764,18 @@ export function XnkNccModule({ onNavigate }) {
           />
         </div>
       </div>
+
+      {/* Column Manager Modal */}
+      <ColumnManagerModal
+        isOpen={isConfigModalOpen}
+        onClose={closeConfigModal}
+        columns={columns}
+        toggleVisibility={toggleVisibility}
+        updateColumnProp={updateColumnProp}
+        moveColumn={moveColumn}
+        resetToDefault={resetToDefault}
+        moduleTitle="Danh sách Nhà Cung Cấp / Xưởng (Xuất Nhập Khẩu)"
+      />
 
       {/* Drawer Thêm / Sửa NCC */}
       <XnkNccDrawer

@@ -3,6 +3,8 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { XnkMauDrawer } from './XnkMauDrawer';
 import { XnkChiTietModal } from './XnkChiTietModal';
+import { ColumnManagerModal } from '../../common/ColumnManagerModal';
+import { useColumnManager } from '../../../hooks/useColumnManager';
 import { Pagination } from '../../common/Pagination';
 import { exportToExcel } from '../../../services/excelService';
 import { 
@@ -24,8 +26,23 @@ import {
   ShoppingCart, 
   List,
   BarChart3,
-  PackageSearch
+  PackageSearch,
+  SlidersHorizontal
 } from 'lucide-react';
+
+const DEFAULT_XNK_MAU_COLUMNS = [
+  { key: 'select', label: 'Chọn', width: 45, align: 'center', format: 'default' },
+  { key: 'id_mau', label: 'Mã mẫu', width: 110, align: 'left', format: 'badge' },
+  { key: 'san_pham', label: 'Sản phẩm & Ý tưởng', width: 220, align: 'left', format: 'default' },
+  { key: 'ten_ncc', label: 'Nhà cung cấp / Xưởng', width: 170, align: 'left', format: 'default' },
+  { key: 'gia_mau', label: 'Giá mẫu', width: 110, align: 'right', format: 'currency' },
+  { key: 'ngay_dat_nhan', label: 'Ngày đặt / Nhận', width: 130, align: 'left', format: 'date' },
+  { key: 'link_anh_mau', label: 'Ảnh thực tế', width: 90, align: 'center', format: 'default' },
+  { key: 'danh_gia_cai_tien', label: 'Đánh giá cải tiến', width: 200, align: 'left', format: 'default' },
+  { key: 'danh_gia_xep_hang', label: 'Xếp hạng', width: 120, align: 'center', format: 'badge' },
+  { key: 'trang_thai_duyet', label: 'Sếp duyệt', width: 130, align: 'center', format: 'badge' },
+  { key: 'actions', label: 'Thao tác', width: 100, align: 'center', format: 'default' }
+];
 
 export function XnkMauModule({ onNavigate }) {
   const { 
@@ -41,6 +58,19 @@ export function XnkMauModule({ onNavigate }) {
 
   // Sub-tabs: [Danh sách] vs [Thống kê]
   const [activeSubTab, setActiveSubTab] = useState('LIST');
+
+  // Column Manager Hook
+  const {
+    columns,
+    visibleColumns,
+    isConfigModalOpen,
+    openConfigModal,
+    closeConfigModal,
+    toggleVisibility,
+    updateColumnProp,
+    moveColumn,
+    resetToDefault
+  } = useColumnManager('xnk_mau', DEFAULT_XNK_MAU_COLUMNS);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -281,6 +311,17 @@ export function XnkMauModule({ onNavigate }) {
             <span className="hidden sm:inline">Xuất Excel</span>
           </button>
 
+          {/* Nút Tùy chỉnh Cột */}
+          <button
+            type="button"
+            onClick={openConfigModal}
+            className="px-2.5 py-1.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            title="Tùy chỉnh cột hiển thị"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" />
+            <span>Cột</span>
+          </button>
+
           {canManage && (
             <button
               onClick={() => { setSelectedItem(null); setIsDrawerOpen(true); }}
@@ -326,30 +367,39 @@ export function XnkMauModule({ onNavigate }) {
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200 select-none">
-                  <th className="py-2.5 px-3 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      checked={paginatedList.length > 0 && selectedIds.length === paginatedList.length}
-                      onChange={handleSelectAll}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
-                    />
-                  </th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Mã mẫu</th>
-                  <th className="py-2.5 px-3 min-w-[170px]">Sản phẩm & Ý tưởng</th>
-                  <th className="py-2.5 px-3 min-w-[150px]">Nhà cung cấp / Xưởng</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-right">Giá mẫu</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Ngày đặt / Nhận</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Ảnh thực tế</th>
-                  <th className="py-2.5 px-3 min-w-[180px]">Đánh giá cải tiến</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Xếp hạng</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Sếp duyệt</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Thao tác</th>
+                  {visibleColumns.map((col) => {
+                    const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
+                    const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
+
+                    if (col.key === 'select') {
+                      return (
+                        <th key={col.key} style={widthStyle} className={`py-2.5 px-3 ${alignClass}`}>
+                          <input
+                            type="checkbox"
+                            checked={paginatedList.length > 0 && selectedIds.length === paginatedList.length}
+                            onChange={handleSelectAll}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                          />
+                        </th>
+                      );
+                    }
+
+                    return (
+                      <th
+                        key={col.key}
+                        style={widthStyle}
+                        className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}
+                      >
+                        {col.label}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginatedList.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-8 text-center text-slate-400">
+                    <td colSpan={visibleColumns.length} className="py-8 text-center text-slate-400">
                       Không tìm thấy dữ liệu đặt hàng mẫu nào
                     </td>
                   </tr>
@@ -368,131 +418,179 @@ export function XnkMauModule({ onNavigate }) {
                         }}
                         className={`hover:bg-slate-50/70 transition cursor-pointer ${isSelected ? 'bg-blue-50/40' : ''}`}
                       >
-                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelect(item.id_mau)}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
-                          />
-                        </td>
-                        {/* Mã mẫu badge */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[11px]">
-                            {item.id_mau}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="font-bold text-slate-900">
-                            {relatedIdea?.ten_sp || 'Chưa liên kết'}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            SKU: {relatedIdea?.sku_du_kien || item.id_y_tuong || '-'}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="font-semibold text-slate-800">{item.ten_ncc}</div>
-                          {item.lien_he_ncc && (
-                            <div className="text-[11px] text-slate-500">{item.lien_he_ncc}</div>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-slate-700 whitespace-nowrap">
-                          {item.gia_mau ? formatCurrency(item.gia_mau) : '-'}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
-                          <div>Đặt: {item.ngay_dat_mau ? formatDateVN(item.ngay_dat_mau) : '-'}</div>
-                          <div className="text-[11px] text-slate-500">
-                            Nhận: {item.ngay_nhan_mau ? formatDateVN(item.ngay_nhan_mau) : 'Chưa nhận'}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          {item.link_anh_mau ? (
-                            <a 
-                              href={item.link_anh_mau} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="inline-block p-0.5 bg-slate-100 rounded-lg hover:ring-2 hover:ring-blue-400 transition"
-                            >
-                              <img
-                                src={item.link_anh_mau}
-                                alt="Mẫu"
-                                className="w-9 h-9 object-cover rounded"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                            </a>
-                          ) : (
-                            <span className="text-slate-400 italic">Chưa có</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-700">
-                          <div className="line-clamp-2" title={item.danh_gia_cai_tien}>
-                            {item.danh_gia_cai_tien || '-'}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          {item.danh_gia_xep_hang === 'Đạt' ? (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                              Đạt
-                            </span>
-                          ) : item.danh_gia_xep_hang === 'Không đạt' ? (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
-                              Không đạt
-                            </span>
-                          ) : item.danh_gia_xep_hang === 'Cần cải tiến thêm' ? (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
-                              Cần cải tiến
-                            </span>
-                          ) : (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500">
-                              Chưa đánh giá
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                            item.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : item.trang_thai_duyet === 'Từ chối'
-                              ? 'bg-rose-100 text-rose-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {item.trang_thai_duyet}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-1">
-                            {isApproved && (
-                              <button
-                                onClick={() => onNavigate('xnk_donhang')}
-                                title="Tạo đơn PO từ mẫu đạt này"
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
-                              >
-                                <ShoppingCart className="w-4 h-4" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                setSelectedItem(item);
-                                setIsDrawerOpen(true);
-                              }}
-                              title="Sửa mẫu"
-                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            {canManage && (
-                              <button
-                                onClick={() => handleDelete(item._sheetRow, item.id_mau)}
-                                title="Xóa mẫu"
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
+                        {visibleColumns.map((col) => {
+                          const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
+                          const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
+                          let formatClass = '';
+                          if (col.format === 'bold') formatClass = 'font-bold text-slate-800';
+                          if (col.format === 'uppercase') formatClass = 'uppercase';
+
+                          switch (col.key) {
+                            case 'select':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleSelect(item.id_mau)}
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                                  />
+                                </td>
+                              );
+                            case 'id_mau':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                  <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[11px]">
+                                    {item.id_mau}
+                                  </span>
+                                </td>
+                              );
+                            case 'san_pham':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 ${alignClass}`}>
+                                  <div className="font-bold text-slate-900">
+                                    {relatedIdea?.ten_sp || 'Chưa liên kết'}
+                                  </div>
+                                  <div className="text-[11px] text-slate-500">
+                                    SKU: {relatedIdea?.sku_du_kien || item.id_y_tuong || '-'}
+                                  </div>
+                                </td>
+                              );
+                            case 'ten_ncc':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 ${alignClass}`}>
+                                  <div className="font-semibold text-slate-800">{item.ten_ncc}</div>
+                                  {item.lien_he_ncc && (
+                                    <div className="text-[11px] text-slate-500">{item.lien_he_ncc}</div>
+                                  )}
+                                </td>
+                              );
+                            case 'gia_mau':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 text-right font-bold text-slate-700 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  {item.gia_mau ? formatCurrency(item.gia_mau) : '-'}
+                                </td>
+                              );
+                            case 'ngay_dat_nhan':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 text-slate-600 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  <div>Đặt: {item.ngay_dat_mau ? formatDateVN(item.ngay_dat_mau) : '-'}</div>
+                                  <div className="text-[11px] text-slate-500">
+                                    Nhận: {item.ngay_nhan_mau ? formatDateVN(item.ngay_nhan_mau) : 'Chưa nhận'}
+                                  </div>
+                                </td>
+                              );
+                            case 'link_anh_mau':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                  {item.link_anh_mau ? (
+                                    <a 
+                                      href={item.link_anh_mau} 
+                                      target="_blank" 
+                                      rel="noreferrer"
+                                      className="inline-block p-0.5 bg-slate-100 rounded-lg hover:ring-2 hover:ring-blue-400 transition"
+                                    >
+                                      <img
+                                        src={item.link_anh_mau}
+                                        alt="Mẫu"
+                                        className="w-9 h-9 object-cover rounded"
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = 'none';
+                                        }}
+                                      />
+                                    </a>
+                                  ) : (
+                                    <span className="text-slate-400 italic">Chưa có</span>
+                                  )}
+                                </td>
+                              );
+                            case 'danh_gia_cai_tien':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 text-slate-700 ${alignClass}`}>
+                                  <div className="line-clamp-2" title={item.danh_gia_cai_tien}>
+                                    {item.danh_gia_cai_tien || '-'}
+                                  </div>
+                                </td>
+                              );
+                            case 'danh_gia_xep_hang':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                  {item.danh_gia_xep_hang === 'Đạt' ? (
+                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                                      Đạt
+                                    </span>
+                                  ) : item.danh_gia_xep_hang === 'Không đạt' ? (
+                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
+                                      Không đạt
+                                    </span>
+                                  ) : item.danh_gia_xep_hang === 'Cần cải tiến thêm' ? (
+                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+                                      Cần cải tiến
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500">
+                                      Chưa đánh giá
+                                    </span>
+                                  )}
+                                </td>
+                              );
+                            case 'trang_thai_duyet':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                    item.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : item.trang_thai_duyet === 'Từ chối'
+                                      ? 'bg-rose-100 text-rose-800'
+                                      : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    {item.trang_thai_duyet}
+                                  </span>
+                                </td>
+                              );
+                            case 'actions':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-center gap-1">
+                                    {isApproved && (
+                                      <button
+                                        onClick={() => onNavigate('xnk_donhang')}
+                                        title="Tạo đơn PO từ mẫu đạt này"
+                                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
+                                      >
+                                        <ShoppingCart className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => {
+                                        setSelectedItem(item);
+                                        setIsDrawerOpen(true);
+                                      }}
+                                      title="Sửa mẫu"
+                                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                    >
+                                      <Edit3 className="w-4 h-4" />
+                                    </button>
+                                    {canManage && (
+                                      <button
+                                        onClick={() => handleDelete(item._sheetRow, item.id_mau)}
+                                        title="Xóa mẫu"
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            default:
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                  {item[col.key] || '-'}
+                                </td>
+                              );
+                          }
+                        })}
                       </tr>
                     );
                   })
@@ -513,6 +611,18 @@ export function XnkMauModule({ onNavigate }) {
           </div>
         </div>
       )}
+
+      {/* Column Manager Modal */}
+      <ColumnManagerModal
+        isOpen={isConfigModalOpen}
+        onClose={closeConfigModal}
+        columns={columns}
+        toggleVisibility={toggleVisibility}
+        updateColumnProp={updateColumnProp}
+        moveColumn={moveColumn}
+        resetToDefault={resetToDefault}
+        moduleTitle="Đặt mẫu & Đánh giá mẫu (Xuất Nhập Khẩu)"
+      />
 
       {/* Drawer */}
       <XnkMauDrawer

@@ -4,6 +4,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { XnkDonHangDrawer } from './XnkDonHangDrawer';
 import { XnkTrackingModal } from './XnkTrackingModal';
 import { XnkChiTietModal } from './XnkChiTietModal';
+import { ColumnManagerModal } from '../../common/ColumnManagerModal';
+import { useColumnManager } from '../../../hooks/useColumnManager';
 import { Pagination } from '../../common/Pagination';
 import { exportToExcel } from '../../../services/excelService';
 import { 
@@ -27,8 +29,27 @@ import {
   BarChart3,
   ShoppingCart,
   Calendar,
-  Building2
+  Building2,
+  SlidersHorizontal
 } from 'lucide-react';
+
+const DEFAULT_XNK_DONHANG_COLUMNS = [
+  { key: 'select', label: 'Chọn', width: 45, align: 'center', format: 'default' },
+  { key: 'ma_po', label: 'Số PO', width: 110, align: 'left', format: 'badge' },
+  { key: 'ngay_dat_hang', label: 'Ngày đặt', width: 105, align: 'left', format: 'date' },
+  { key: 'ngay_sx_xong', label: 'Ngày giao DK', width: 110, align: 'left', format: 'date' },
+  { key: 'ten_ncc', label: 'Nhà cung cấp', width: 160, align: 'left', format: 'default' },
+  { key: 'sku', label: 'SKU', width: 110, align: 'left', format: 'bold' },
+  { key: 'ten_sp', label: 'Tên sản phẩm', width: 220, align: 'left', format: 'default' },
+  { key: 'so_luong', label: 'SLG Đặt', width: 90, align: 'right', format: 'number' },
+  { key: 'don_gia', label: 'Đơn giá', width: 110, align: 'right', format: 'currency' },
+  { key: 'tong_tien', label: 'Tổng tiền', width: 120, align: 'right', format: 'currency' },
+  { key: 'tien_coc', label: 'Tiền cọc', width: 110, align: 'right', format: 'currency' },
+  { key: 'ke_hoach_ban', label: 'Kế hoạch bán', width: 130, align: 'center', format: 'badge' },
+  { key: 'tinh_trang_cuoi', label: 'Trạng thái', width: 130, align: 'center', format: 'badge' },
+  { key: 'stepper', label: 'Tiến độ', width: 100, align: 'center', format: 'default' },
+  { key: 'actions', label: 'Thao tác', width: 90, align: 'center', format: 'default' }
+];
 
 export function XnkDonHangModule({ onNavigate }) {
   const { 
@@ -44,6 +65,19 @@ export function XnkDonHangModule({ onNavigate }) {
 
   // Sub-tabs matching Screenshot 2: [Danh sách] vs [Thống kê]
   const [activeSubTab, setActiveSubTab] = useState('LIST');
+
+  // Column Manager Hook
+  const {
+    columns,
+    visibleColumns,
+    isConfigModalOpen,
+    openConfigModal,
+    closeConfigModal,
+    toggleVisibility,
+    updateColumnProp,
+    moveColumn,
+    resetToDefault
+  } = useColumnManager('xnk_donhang', DEFAULT_XNK_DONHANG_COLUMNS);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -306,6 +340,17 @@ export function XnkDonHangModule({ onNavigate }) {
             <span className="hidden sm:inline">Xuất Excel</span>
           </button>
 
+          {/* Nút Tùy chỉnh Cột */}
+          <button
+            type="button"
+            onClick={openConfigModal}
+            className="px-2.5 py-1.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            title="Tùy chỉnh cột hiển thị"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" />
+            <span>Cột</span>
+          </button>
+
           {canManage && (
             <button
               onClick={() => { setSelectedItem(null); setIsDrawerOpen(true); }}
@@ -351,34 +396,39 @@ export function XnkDonHangModule({ onNavigate }) {
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200 select-none">
-                  <th className="py-2.5 px-3 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      checked={paginatedList.length > 0 && selectedIds.length === paginatedList.length}
-                      onChange={handleSelectAll}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
-                    />
-                  </th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Số PO</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Ngày đặt</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Ngày giao DK</th>
-                  <th className="py-2.5 px-3 min-w-[150px]">Nhà cung cấp</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">SKU</th>
-                  <th className="py-2.5 px-3 min-w-[180px]">Tên sản phẩm</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-right">SLG Đặt</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-right">Đơn giá</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-right">Tổng tiền</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-right">Tiền cọc</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Kế hoạch bán</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Trạng thái</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Tiến độ</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap text-center">Thao tác</th>
+                  {visibleColumns.map((col) => {
+                    const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
+                    const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
+
+                    if (col.key === 'select') {
+                      return (
+                        <th key={col.key} style={widthStyle} className={`py-2.5 px-3 ${alignClass}`}>
+                          <input
+                            type="checkbox"
+                            checked={paginatedList.length > 0 && selectedIds.length === paginatedList.length}
+                            onChange={handleSelectAll}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                          />
+                        </th>
+                      );
+                    }
+
+                    return (
+                      <th
+                        key={col.key}
+                        style={widthStyle}
+                        className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}
+                      >
+                        {col.label}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginatedList.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="py-8 text-center text-slate-400">
+                    <td colSpan={visibleColumns.length} className="py-8 text-center text-slate-400">
                       Không tìm thấy đơn đặt hàng PO nào
                     </td>
                   </tr>
@@ -395,106 +445,166 @@ export function XnkDonHangModule({ onNavigate }) {
                         }}
                         className={`hover:bg-slate-50/70 transition cursor-pointer ${isSelected ? 'bg-blue-50/40' : ''}`}
                       >
-                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelect(item.ma_po)}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
-                          />
-                        </td>
-                        {/* Số PO badge giống chính xác Screenshot 2 */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[11px]">
-                            {item.ma_po}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
-                          {formatDateVN(item.ngay_dat_hang)}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
-                          {item.ngay_sx_xong ? formatDateVN(item.ngay_sx_xong) : '-'}
-                        </td>
-                        <td className="py-2.5 px-3 font-medium text-slate-800">
-                          {item.ten_ncc || '-'}
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                          {item.sku}
-                        </td>
-                        <td className="py-2.5 px-3 font-semibold text-slate-900">
-                          {item.ten_sp}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-blue-700 whitespace-nowrap">
-                          {formatNumber(item.so_luong)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-medium text-slate-700 whitespace-nowrap">
-                          {formatCurrency(item.don_gia)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
-                          {formatCurrency(item.tong_tien)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-semibold text-amber-700 whitespace-nowrap">
-                          {formatCurrency(item.tien_coc)}
-                        </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                            item.ke_hoach_ban?.startsWith('Bán ngay')
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {item.ke_hoach_ban}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                            item.tinh_trang_cuoi === 'Đã về kho' || item.tinh_trang_cuoi === 'Đã hoàn thành'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : item.tinh_trang_cuoi === 'Đang thông quan'
-                              ? 'bg-indigo-100 text-indigo-800'
-                              : item.tinh_trang_cuoi === 'Đang vận chuyển'
-                              ? 'bg-cyan-100 text-cyan-800'
-                              : item.tinh_trang_cuoi === 'Đang sản xuất'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {item.tinh_trang_cuoi}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTrackingOrder(item);
-                              setIsTrackingModalOpen(true);
-                            }}
-                            className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] inline-flex items-center gap-1 transition cursor-pointer"
-                          >
-                            <Eye className="w-3.5 h-3.5" /> Stepper
-                          </button>
-                        </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={() => {
-                                setSelectedItem(item);
-                                setIsDrawerOpen(true);
-                              }}
-                              title="Sửa PO"
-                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            {canManage && (
-                              <button
-                                onClick={() => handleDelete(item._sheetRow, item.ma_po)}
-                                title="Xóa PO"
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
+                        {visibleColumns.map((col) => {
+                          const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
+                          const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
+                          let formatClass = '';
+                          if (col.format === 'bold') formatClass = 'font-bold text-slate-800';
+                          if (col.format === 'uppercase') formatClass = 'uppercase';
+
+                          switch (col.key) {
+                            case 'select':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleSelect(item.ma_po)}
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                                  />
+                                </td>
+                              );
+                            case 'ma_po':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                  <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[11px]">
+                                    {item.ma_po}
+                                  </span>
+                                </td>
+                              );
+                            case 'ngay_dat_hang':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 text-slate-600 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  {formatDateVN(item.ngay_dat_hang)}
+                                </td>
+                              );
+                            case 'ngay_sx_xong':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 text-slate-600 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  {item.ngay_sx_xong ? formatDateVN(item.ngay_sx_xong) : '-'}
+                                </td>
+                              );
+                            case 'ten_ncc':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-medium text-slate-800 ${alignClass} ${formatClass}`}>
+                                  {item.ten_ncc || '-'}
+                                </td>
+                              );
+                            case 'sku':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  {item.sku}
+                                </td>
+                              );
+                            case 'ten_sp':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-semibold text-slate-900 ${alignClass} ${formatClass}`}>
+                                  {item.ten_sp}
+                                </td>
+                              );
+                            case 'so_luong':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-bold text-blue-700 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  {formatNumber(item.so_luong)}
+                                </td>
+                              );
+                            case 'don_gia':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  {formatCurrency(item.don_gia)}
+                                </td>
+                              );
+                            case 'tong_tien':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-bold text-emerald-700 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  {formatCurrency(item.tong_tien)}
+                                </td>
+                              );
+                            case 'tien_coc':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 font-semibold text-amber-700 whitespace-nowrap ${alignClass} ${formatClass}`}>
+                                  {formatCurrency(item.tien_coc)}
+                                </td>
+                              );
+                            case 'ke_hoach_ban':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                    item.ke_hoach_ban?.startsWith('Bán ngay')
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    {item.ke_hoach_ban}
+                                  </span>
+                                </td>
+                              );
+                            case 'tinh_trang_cuoi':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                    item.tinh_trang_cuoi === 'Đã về kho' || item.tinh_trang_cuoi === 'Đã hoàn thành'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : item.tinh_trang_cuoi === 'Đang thông quan'
+                                      ? 'bg-indigo-100 text-indigo-800'
+                                      : item.tinh_trang_cuoi === 'Đang vận chuyển'
+                                      ? 'bg-cyan-100 text-cyan-800'
+                                      : item.tinh_trang_cuoi === 'Đang sản xuất'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-slate-100 text-slate-700'
+                                  }`}>
+                                    {item.tinh_trang_cuoi}
+                                  </span>
+                                </td>
+                              );
+                            case 'stepper':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTrackingOrder(item);
+                                      setIsTrackingModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] inline-flex items-center gap-1 transition cursor-pointer"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" /> Stepper
+                                  </button>
+                                </td>
+                              );
+                            case 'actions':
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`} onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedItem(item);
+                                        setIsDrawerOpen(true);
+                                      }}
+                                      title="Sửa PO"
+                                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                    >
+                                      <Edit3 className="w-4 h-4" />
+                                    </button>
+                                    {canManage && (
+                                      <button
+                                        onClick={() => handleDelete(item._sheetRow, item.ma_po)}
+                                        title="Xóa PO"
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            default:
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
+                                  {item[col.key] || '-'}
+                                </td>
+                              );
+                          }
+                        })}
                       </tr>
                     );
                   })
@@ -515,6 +625,18 @@ export function XnkDonHangModule({ onNavigate }) {
           </div>
         </div>
       )}
+
+      {/* Column Manager Modal */}
+      <ColumnManagerModal
+        isOpen={isConfigModalOpen}
+        onClose={closeConfigModal}
+        columns={columns}
+        toggleVisibility={toggleVisibility}
+        updateColumnProp={updateColumnProp}
+        moveColumn={moveColumn}
+        resetToDefault={resetToDefault}
+        moduleTitle="Đơn hàng PO (Xuất Nhập Khẩu)"
+      />
 
       {/* Drawer */}
       <XnkDonHangDrawer
