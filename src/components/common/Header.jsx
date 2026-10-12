@@ -148,10 +148,12 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
                   </button>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
                   <span className="px-2.5 py-0.5 bg-blue-600 text-white rounded-md font-bold text-[11px] sm:text-xs shadow-xs tracking-tight shrink-0">
+                    {activeModule === 'xnk_tongquan' && 'Tổng quan XNK'}
                     {activeModule === 'xnk_ytuong' && 'Phiếu đề xuất / Ý tưởng'}
                     {activeModule === 'xnk_mau' && 'Đặt mẫu & Đánh giá NCC'}
                     {activeModule === 'xnk_donhang' && 'Đơn đặt hàng'}
                     {activeModule === 'xnk_tiendo' && 'Tiến độ 5 chặng XNK'}
+                    {activeModule === 'xnk_ncc' && 'Danh sách NCC'}
                   </span>
                 </>
               ) : (

@@ -24,24 +24,28 @@ import { NhanvienModule } from './components/modules/nhanvien/NhanvienModule';
 import { KhachhangModule } from './components/modules/khachhang/KhachhangModule';
 import { DubaonhapModule } from './components/modules/dubaonhap/DubaonhapModule';
 import { XnkHubModule } from './components/modules/xnk/XnkHubModule';
+import { XnkModule } from './components/modules/xnk/XnkModule';
 import { XnkYtuongModule } from './components/modules/xnk/XnkYtuongModule';
 import { XnkMauModule } from './components/modules/xnk/XnkMauModule';
 import { XnkDonHangModule } from './components/modules/xnk/XnkDonHangModule';
 import { XnkTienDoModule } from './components/modules/xnk/XnkTienDoModule';
+import { XnkNccModule } from './components/modules/xnk/XnkNccModule';
 import { CaidatModule } from './components/modules/caidat/CaidatModule';
 
 const VALID_MODULES = [
   'home', 'tongquan', 'nhap', 'dukien', 'xuat', 'chuyenkho', 'sanpham',
   'sanphamkho', 'cngiasp', 'lendon', 'ton_npp', 'doisoat', 'nhanvien', 'khachhang',
-  'dubaonhap', 'xnk', 'xnk_ytuong', 'xnk_mau', 'xnk_donhang', 'xnk_tiendo', 'caidat'
+  'dubaonhap', 'xnk', 'xnk_tongquan', 'xnk_ytuong', 'xnk_mau', 'xnk_donhang', 'xnk_tiendo', 'xnk_ncc', 'caidat'
 ];
 
 function getModuleFromLocation() {
   const cleanPath = window.location.pathname.replace(/^\/+/, '').trim().toLowerCase();
+  if (cleanPath === 'xnk/tong_quan' || cleanPath === 'xnk/tongquan') return 'xnk_tongquan';
   if (cleanPath === 'xnk/y_tuong' || cleanPath === 'xnk/ytuong') return 'xnk_ytuong';
   if (cleanPath === 'xnk/mau') return 'xnk_mau';
   if (cleanPath === 'xnk/don_hang' || cleanPath === 'xnk/donhang') return 'xnk_donhang';
   if (cleanPath === 'xnk/tien_do' || cleanPath === 'xnk/tiendo') return 'xnk_tiendo';
+  if (cleanPath === 'xnk/ncc') return 'xnk_ncc';
   if (cleanPath === 'xnk') return 'xnk';
 
   const first = cleanPath.split('/')[0];
@@ -51,10 +55,12 @@ function getModuleFromLocation() {
 function getPathForModule(mod) {
   if (mod === 'home') return '/';
   if (mod === 'xnk') return '/xnk';
+  if (mod === 'xnk_tongquan') return '/xnk/tong_quan';
   if (mod === 'xnk_ytuong') return '/xnk/y_tuong';
   if (mod === 'xnk_mau') return '/xnk/mau';
   if (mod === 'xnk_donhang') return '/xnk/don_hang';
   if (mod === 'xnk_tiendo') return '/xnk/tien_do';
+  if (mod === 'xnk_ncc') return '/xnk/ncc';
   return `/${mod}`;
 }
 
@@ -195,6 +201,10 @@ export function App() {
               <XnkHubModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
 
+            {activeModule === 'xnk_tongquan' && (
+              <XnkModule onNavigate={(mod) => navigateToModule(mod)} />
+            )}
+
             {activeModule === 'xnk_ytuong' && (
               <XnkYtuongModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
@@ -209,6 +219,10 @@ export function App() {
 
             {activeModule === 'xnk_tiendo' && (
               <XnkTienDoModule onNavigate={(mod) => navigateToModule(mod)} />
+            )}
+
+            {activeModule === 'xnk_ncc' && (
+              <XnkNccModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
 
             {activeModule === 'caidat' && <CaidatModule />}

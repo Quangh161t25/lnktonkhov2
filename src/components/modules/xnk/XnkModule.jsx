@@ -38,7 +38,8 @@ import {
   Filter,
   Check,
   Building2,
-  Calendar
+  Calendar,
+  ArrowLeft
 } from 'lucide-react';
 
 const TABS = [
@@ -48,7 +49,7 @@ const TABS = [
   { key: 'tiendo', label: '4. Bảng tiến độ 5 chặng', icon: Clock }
 ];
 
-export function XnkModule() {
+export function XnkModule({ onNavigate }) {
   const { 
     xnkYtuongData, 
     xnkMauData, 
@@ -308,12 +309,22 @@ export function XnkModule() {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
+              {onNavigate && (
+                <button
+                  onClick={() => onNavigate('xnk')}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0 mr-1"
+                  title="Quay lại Hub Xuất Nhập Khẩu"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-500" />
+                  <span>Quay lại</span>
+                </button>
+              )}
               <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-xs">
                 <Ship className="w-5 h-5" />
               </div>
               <div>
                 <h1 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
-                  Quản Lý Xuất Nhập Khẩu (XNK)
+                  Tổng Quan Quản Lý Xuất Nhập Khẩu (XNK)
                 </h1>
                 <p className="text-xs text-slate-500">
                   Quy trình 4 bước: Ý tưởng sản phẩm ➔ Tìm NCC đặt mẫu ➔ Đặt hàng PO ➔ Theo dõi 5 chặng tiến độ
@@ -667,9 +678,10 @@ export function XnkModule() {
             <Pagination
               currentPage={currentPage}
               totalItems={filteredYtuong.length}
-              itemsPerPage={itemsPerPage}
+              pageSize={itemsPerPage}
               onPageChange={setCurrentPage}
-              onItemsPerPageChange={setItemsPerPage}
+              onPageSizeChange={setItemsPerPage}
+              pageSizeOptions={[25, 50, 100, 200]}
             />
           </div>
         </div>
@@ -826,9 +838,10 @@ export function XnkModule() {
             <Pagination
               currentPage={currentPage}
               totalItems={filteredMau.length}
-              itemsPerPage={itemsPerPage}
+              pageSize={itemsPerPage}
               onPageChange={setCurrentPage}
-              onItemsPerPageChange={setItemsPerPage}
+              onPageSizeChange={setItemsPerPage}
+              pageSizeOptions={[25, 50, 100, 200]}
             />
           </div>
         </div>
@@ -958,9 +971,10 @@ export function XnkModule() {
             <Pagination
               currentPage={currentPage}
               totalItems={filteredDonHang.length}
-              itemsPerPage={itemsPerPage}
+              pageSize={itemsPerPage}
               onPageChange={setCurrentPage}
-              onItemsPerPageChange={setItemsPerPage}
+              onPageSizeChange={setItemsPerPage}
+              pageSizeOptions={[25, 50, 100, 200]}
             />
           </div>
         </div>

@@ -48,6 +48,15 @@ export function XnkHubModule({ onNavigate }) {
       groupTitle: 'Đề xuất & Ý tưởng sản phẩm',
       cards: [
         {
+          id: 'xnk_tongquan',
+          title: 'Tổng quan XNK',
+          desc: 'Giao diện tổng hợp toàn diện: Ý tưởng, Đặt mẫu, Đơn hàng PO & Tiến độ 5 chặng.',
+          icon: Ship,
+          iconBg: 'bg-blue-100 text-blue-600',
+          route: 'xnk_tongquan',
+          helpText: 'Màn hình tổng quan đầy đủ cả 4 phân hệ xuất nhập khẩu dạng tab như ban đầu.'
+        },
+        {
           id: 'xnk_ytuong',
           title: 'Phiếu đề xuất / Ý tưởng',
           desc: 'Tạo, thảo luận và phê duyệt phiếu đề xuất ý tưởng sản phẩm.',
@@ -61,7 +70,7 @@ export function XnkHubModule({ onNavigate }) {
           title: 'Đơn đặt hàng (PO)',
           desc: 'Tạo PO, gửi đối tác xưởng, theo dõi 5 chặng tiến độ & trạng thái.',
           icon: ShoppingCart,
-          iconBg: 'bg-blue-100 text-blue-600',
+          iconBg: 'bg-indigo-100 text-indigo-600',
           route: 'xnk_donhang',
           helpText: 'Lên đơn đặt hàng số lượng lớn, theo dõi thanh toán cọc xưởng và ngày về kho.'
         },
@@ -73,15 +82,6 @@ export function XnkHubModule({ onNavigate }) {
           iconBg: 'bg-purple-100 text-purple-600',
           route: 'xnk_tiendo',
           helpText: 'Bảng Kanban & biểu đồ tiến độ trực quan theo thời gian thực của các lô hàng.'
-        },
-        {
-          id: 'xnk_thietlap',
-          title: 'Thiết lập đề xuất XNK',
-          desc: 'Quy trình duyệt, mẫu phiếu, tiêu chuẩn kiểm hàng, cấu hình.',
-          icon: Settings,
-          iconBg: 'bg-slate-100 text-slate-600',
-          route: 'caidat',
-          helpText: 'Thiết lập danh mục và phân quyền kiểm soát quy trình xuất nhập khẩu.'
         }
       ]
     },
@@ -94,18 +94,18 @@ export function XnkHubModule({ onNavigate }) {
           title: 'Đặt mẫu thử & Đánh giá NCC',
           desc: 'Đặt mẫu về, tải ảnh mẫu thực tế, đánh giá cải tiến, Sếp duyệt.',
           icon: PackageSearch,
-          iconBg: 'bg-indigo-100 text-indigo-600',
+          iconBg: 'bg-emerald-100 text-emerald-600',
           route: 'xnk_mau',
           helpText: 'So sánh chất lượng sản phẩm mẫu giữa các nhà cung cấp trước khi sản xuất hàng loạt.'
         },
         {
-          id: 'xnk_ds_ncc',
-          title: 'Danh sách NCC & Người liên hệ',
-          desc: 'Quản lý danh sách nhà cung cấp, xưởng SX, Wechat, hotline.',
+          id: 'xnk_ncc',
+          title: 'Danh sách NCC',
+          desc: 'Quản lý danh sách nhà cung cấp, xưởng sản xuất, liên hệ & uy tín.',
           icon: Building2,
           iconBg: 'bg-sky-100 text-sky-600',
-          route: 'khachhang',
-          helpText: 'Danh bạ thông tin liên lạc và hồ sơ đối tác xưởng sản xuất.'
+          route: 'xnk_ncc',
+          helpText: 'Danh sách thông tin liên lạc và hồ sơ đối tác xưởng sản xuất, nhà cung cấp.'
         }
       ]
     }
