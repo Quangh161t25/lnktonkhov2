@@ -27,6 +27,9 @@ export function DataProvider({ children }) {
   const [lenDonData, setLenDonData] = useState(() => getLocalItem(STORAGE_KEYS.LENDON_CACHE, []));
   const [caidatData, setCaidatData] = useState(() => getLocalItem(STORAGE_KEYS.CAIDAT_CACHE, []));
   const [lichSuData, setLichSuData] = useState(() => getLocalItem(STORAGE_KEYS.LICHSU_CACHE, []));
+  const [xnkYtuongData, setXnkYtuongData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_YTUONG_CACHE, []));
+  const [xnkMauData, setXnkMauData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_MAU_CACHE, []));
+  const [xnkDonHangData, setXnkDonHangData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_DONHANG_CACHE, []));
   const [aggregatesData, setAggregatesData] = useState(() => getLocalItem('lnk_aggregates_cache', {}));
   const [nppProductIdsData, setNppProductIdsData] = useState(() => getLocalItem('lnk_npp_products_cache', []));
 
@@ -85,6 +88,18 @@ export function DataProvider({ children }) {
         setLichSuData(data);
         setLocalItem(STORAGE_KEYS.LICHSU_CACHE, data);
         break;
+      case 'xnk_ytuong':
+        setXnkYtuongData(data);
+        setLocalItem(STORAGE_KEYS.XNK_YTUONG_CACHE, data);
+        break;
+      case 'xnk_mau':
+        setXnkMauData(data);
+        setLocalItem(STORAGE_KEYS.XNK_MAU_CACHE, data);
+        break;
+      case 'xnk_donhang':
+        setXnkDonHangData(data);
+        setLocalItem(STORAGE_KEYS.XNK_DONHANG_CACHE, data);
+        break;
       default:
         break;
     }
@@ -104,6 +119,9 @@ export function DataProvider({ children }) {
       case 'lendon': return lenDonData;
       case 'caidat': return caidatData;
       case 'lichsu': return lichSuData;
+      case 'xnk_ytuong': return xnkYtuongData;
+      case 'xnk_mau': return xnkMauData;
+      case 'xnk_donhang': return xnkDonHangData;
       default: return [];
     }
   };
@@ -149,6 +167,15 @@ export function DataProvider({ children }) {
 
   // Fetch Module Data
   const fetchModule = useCallback(async (moduleName, force = false) => {
+    if (moduleName === 'xnk') {
+      const [ytuong, mau, donhang] = await Promise.all([
+        fetchModule('xnk_ytuong', force),
+        fetchModule('xnk_mau', force),
+        fetchModule('xnk_donhang', force)
+      ]);
+      return { ytuong, mau, donhang };
+    }
+
     const config = SIMPLE_SHEET_MODULES[moduleName];
     if (!config) return [];
 
@@ -763,6 +790,9 @@ export function DataProvider({ children }) {
         lenDonData,
         caidatData,
         lichSuData,
+        xnkYtuongData,
+        xnkMauData,
+        xnkDonHangData,
         aggregatesData,
         nppProductIdsData,
         fetchAggregatesData,

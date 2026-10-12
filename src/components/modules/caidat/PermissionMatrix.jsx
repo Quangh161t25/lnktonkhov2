@@ -23,6 +23,7 @@ import {
   Calculator, 
   Briefcase, 
   Truck, 
+  Ship,
   Check, 
   CheckSquare, 
   Square, 
@@ -171,6 +172,19 @@ export const PERMISSION_MODULE_GROUPS = [
           edit: null,
           delete: 'nx.delete',
           approve: null
+        }
+      },
+      {
+        key: 'xnk',
+        name: 'Xuất Nhập Khẩu',
+        desc: 'Ý tưởng sản phẩm, đặt mẫu thử & theo dõi tiến độ đơn hàng',
+        actions: {
+          view: true,
+          viewDetail: null,
+          add: 'xnk.manage',
+          edit: 'xnk.manage',
+          delete: 'xnk.manage',
+          approve: 'xnk.approve'
         }
       }
     ]

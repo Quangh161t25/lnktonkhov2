@@ -15,7 +15,10 @@ export const STORAGE_KEYS = {
   USERS_CACHE: 'erp_users_cache',
   FORECAST_PARAMS: 'erp_forecast_params',
   CAIDAT_CACHE: 'erp_caidat_cache',
-  LICHSU_CACHE: 'erp_lichsu_cache'
+  LICHSU_CACHE: 'erp_lichsu_cache',
+  XNK_YTUONG_CACHE: 'erp_xnk_ytuong_cache',
+  XNK_MAU_CACHE: 'erp_xnk_mau_cache',
+  XNK_DONHANG_CACHE: 'erp_xnk_donhang_cache'
 };
 
 export function getLocalItem(key, defaultValue = null) {

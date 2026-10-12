@@ -16,6 +16,9 @@ export const CONFIG = {
   cngiaspSheetName: "CN_GIA_SP",
   lenDonSheetName: "LEN_DON",
   lichSuSheetName: "LICH_SU",
+  xnkYtuongSheetName: "XNK_Y_TUONG",
+  xnkMauSheetName: "XNK_MAU",
+  xnkDonHangSheetName: "XNK_DON_HANG",
   permissionsFile: "permissions.json"
 };
 
@@ -72,6 +75,7 @@ export const MODULE_DEFINITIONS = [
   { key: 'nhanvien', name: 'Danh sách nhân viên', desc: 'Danh bạ nhân viên từ DSNV', icon: 'Users', color: 'sky' },
   { key: 'khachhang', name: 'Danh sách khách hàng', desc: 'Khách hàng NPP và NCC', icon: 'UserCheck', color: 'violet' },
   { key: 'dubaonhap', name: 'Dự báo nhập hàng', desc: 'Dự báo điểm đặt hàng (ROP), số ngày hết hàng và lượng cần nhập', icon: 'TrendingUp', color: 'purple' },
+  { key: 'xnk', name: 'Xuất Nhập Khẩu', desc: 'Quản lý ý tưởng SP, đặt mẫu và tiến độ đơn hàng', icon: 'Ship', color: 'blue' },
   { key: 'caidat', name: 'Cài đặt & Phân quyền', desc: 'Quản trị hệ thống & thiết kế phân quyền', icon: 'Settings', color: 'slate' }
 ];
 
@@ -85,5 +89,7 @@ export const AVAILABLE_ACTIONS = [
   { key: 'cngiasp.manage', name: 'Quản lý bảng giá SP', desc: 'Thêm mới, sửa, xóa và tải lên file giá sản phẩm' },
   { key: 'lendon.manage', name: 'Quản lý Lên đơn', desc: 'Thêm mới, sửa, xóa và tải lên đơn hàng' },
   { key: 'doisoat.manage', name: 'Quản lý Đối soát', desc: 'Thao tác tải lên và đối chiếu chênh lệch MISA' },
+  { key: 'xnk.manage', name: 'Quản lý Xuất Nhập Khẩu', desc: 'Thêm mới, sửa ý tưởng, đặt mẫu và đơn hàng sản xuất' },
+  { key: 'xnk.approve', name: 'Duyệt ý tưởng & Mẫu XNK', desc: 'Quyền Trưởng bộ phận/Sếp duyệt ý tưởng và chốt mẫu sản xuất' },
   { key: 'caidat.manage', name: 'Quản trị Phân quyền', desc: 'Thiết kế vai trò và lưu cấu hình phân quyền' }
 ];

@@ -72,5 +72,23 @@ export const SIMPLE_SHEET_MODULES = {
     range: 'A1:L50000',
     cacheKey: 'erp_lichsu_cache',
     columns: ['id', 'thoi_gian', 'nguoi_dung', 'vai_tro', 'phan_he', 'thao_tac', 'ma_don', 'doi_tuong', 'tom_tat', 'du_lieu_cu', 'du_lieu_moi', 'trang_thai_khoi_phuc']
+  },
+  xnk_ytuong: {
+    sheetName: () => CONFIG.xnkYtuongSheetName || 'XNK_Y_TUONG',
+    range: 'A1:J20000',
+    cacheKey: 'erp_xnk_ytuong_cache',
+    columns: ['id_y_tuong', 'ngay_tao', 'nguoi_tao', 'sku_du_kien', 'ten_sp', 'mo_ta', 'link_tham_khao', 'trang_thai', 'nguoi_duyet', 'ghi_chu']
+  },
+  xnk_mau: {
+    sheetName: () => CONFIG.xnkMauSheetName || 'XNK_MAU',
+    range: 'A1:L20000',
+    cacheKey: 'erp_xnk_mau_cache',
+    columns: ['id_mau', 'id_y_tuong', 'ten_ncc', 'lien_he_ncc', 'gia_mau', 'ngay_dat_mau', 'ngay_nhan_mau', 'link_anh_mau', 'danh_gia_cai_tien', 'danh_gia_xep_hang', 'trang_thai_duyet', 'ghi_chu']
+  },
+  xnk_donhang: {
+    sheetName: () => CONFIG.xnkDonHangSheetName || 'XNK_DON_HANG',
+    range: 'A1:S30000',
+    cacheKey: 'erp_xnk_donhang_cache',
+    columns: ['ma_po', 'id_mau', 'sku', 'ten_sp', 'ten_ncc', 'so_luong', 'don_gia', 'tong_tien', 'tien_coc', 'ngay_dat_hang', 'ngay_sx_xong', 'tracking_van_chuyen', 'ngay_gui_hang', 'ngay_thong_quan', 'ngay_kho_nhan', 'slg_thuc_nhan', 'ke_hoach_ban', 'tinh_trang_cuoi', 'ghi_chu']
   }
 };

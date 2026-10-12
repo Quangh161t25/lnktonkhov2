@@ -23,12 +23,13 @@ import { DoisoatModule } from './components/modules/doisoat/DoisoatModule';
 import { NhanvienModule } from './components/modules/nhanvien/NhanvienModule';
 import { KhachhangModule } from './components/modules/khachhang/KhachhangModule';
 import { DubaonhapModule } from './components/modules/dubaonhap/DubaonhapModule';
+import { XnkModule } from './components/modules/xnk/XnkModule';
 import { CaidatModule } from './components/modules/caidat/CaidatModule';
 
 const VALID_MODULES = [
   'home', 'tongquan', 'nhap', 'dukien', 'xuat', 'chuyenkho', 'sanpham',
   'sanphamkho', 'cngiasp', 'lendon', 'ton_npp', 'doisoat', 'nhanvien', 'khachhang',
-  'dubaonhap', 'caidat'
+  'dubaonhap', 'xnk', 'caidat'
 ];
 
 function getModuleFromLocation() {
@@ -168,6 +169,8 @@ export function App() {
             {activeModule === 'dubaonhap' && (
               <DubaonhapModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
+
+            {activeModule === 'xnk' && <XnkModule />}
 
             {activeModule === 'caidat' && <CaidatModule />}
           </ErrorBoundary>

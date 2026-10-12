@@ -16,30 +16,31 @@ export const DEFAULT_PERMISSIONS = {
     nhanvien: "Danh sách nhân viên",
     khachhang: "Danh sách khách hàng",
     dubaonhap: "Dự báo nhập hàng",
+    xnk: "Xuất Nhập Khẩu",
     caidat: "Cài đặt & Phân quyền"
   },
   roles: {
     ADMIN: {
       modules: [
         "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanphamkho", "cngiasp", "lendon",
-        "ton_npp", "doisoat", "nhanvien", "khachhang", "dubaonhap", "caidat"
+        "ton_npp", "doisoat", "nhanvien", "khachhang", "dubaonhap", "xnk", "caidat"
       ],
       actions: [
         "sanpham.viewDetail", "nx.manualAdd", "nx.upload", "nx.confirmWarehouse", "nx.delete",
-        "sanpham.manage", "cngiasp.manage", "lendon.manage", "doisoat.manage", "caidat.manage"
+        "sanpham.manage", "cngiasp.manage", "lendon.manage", "doisoat.manage", "xnk.manage", "xnk.approve", "caidat.manage"
       ]
     },
     KT: {
       modules: [
-        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanphamkho", "cngiasp", "lendon", "ton_npp", "doisoat"
+        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanphamkho", "cngiasp", "lendon", "ton_npp", "doisoat", "xnk"
       ],
       actions: [
-        "sanpham.viewDetail", "nx.upload", "cngiasp.manage", "lendon.manage", "doisoat.manage"
+        "sanpham.viewDetail", "nx.upload", "cngiasp.manage", "lendon.manage", "doisoat.manage", "xnk.manage", "xnk.approve"
       ]
     },
     KHO: {
       modules: [
-        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanphamkho", "ton_npp"
+        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanphamkho", "ton_npp", "xnk"
       ],
       actions: [
         "sanpham.viewDetail", "nx.confirmWarehouse"
