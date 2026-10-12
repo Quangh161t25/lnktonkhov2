@@ -16,42 +16,56 @@ import {
   Warehouse, 
   Calendar, 
   Save, 
-  DollarSign, 
-  Layers,
-  Sparkles,
-  CheckCircle2,
-  Table,
-  CalendarRange,
+  Sparkles, 
+  Table, 
+  CalendarRange, 
+  Clock, 
+  Package, 
+  Check, 
   ArrowRight,
-  Clock,
-  Lightbulb,
-  Package,
-  Building2,
-  Info,
-  Check
+  TrendingUp,
+  AlertCircle
 } from 'lucide-react';
 
-const KE_HOACH_BAN_OPTIONS = [
-  'Bán ngay',
-  'Bán sau (Trữ kho)'
-];
+// Cộng trừ ngày theo múi giờ địa phương an toàn
+function addDays(dateStr, days) {
+  if (!dateStr) return '';
+  const numDays = Number(days);
+  if (isNaN(numDays)) return dateStr;
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const dateObj = new Date(y, m, d);
+    dateObj.setDate(dateObj.getDate() + numDays);
+    const resY = dateObj.getFullYear();
+    const resM = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const resD = String(dateObj.getDate()).padStart(2, '0');
+    return `${resY}-${resM}-${resD}`;
+  }
+  const dateObj = new Date(dateStr);
+  if (isNaN(dateObj.getTime())) return dateStr;
+  dateObj.setDate(dateObj.getDate() + numDays);
+  return dateObj.toISOString().slice(0, 10);
+}
 
-const TINH_TRANG_CUOI_OPTIONS = [
-  'Đã đặt cọc',
-  'Đang sản xuất',
-  'Đang vận chuyển',
-  'Đang thông quan',
-  'Đã về kho',
-  'Đã hoàn thành',
-  'Đã hủy'
-];
-
+// Tính khoảng cách số ngày giữa 2 mốc thời gian
 function calcDurationDays(startDate, endDate) {
-  if (!startDate || !endDate) return null;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
-  const diffTime = end.getTime() - start.getTime();
+  if (!startDate || !endDate) return 0;
+  const startParts = startDate.split('-');
+  const endParts = endDate.split('-');
+  if (startParts.length === 3 && endParts.length === 3) {
+    const s = new Date(parseInt(startParts[0], 10), parseInt(startParts[1], 10) - 1, parseInt(startParts[2], 10));
+    const e = new Date(parseInt(endParts[0], 10), parseInt(endParts[1], 10) - 1, parseInt(endParts[2], 10));
+    const diffTime = e.getTime() - s.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 ? diffDays : 0;
+  }
+  const s = new Date(startDate);
+  const e = new Date(endDate);
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
+  const diffTime = e.getTime() - s.getTime();
   const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
   return diffDays >= 0 ? diffDays : 0;
 }
@@ -63,7 +77,7 @@ export function XnkDonHangDrawer({
   initialSample = null,
   onSaved 
 }) {
-  const { currentUser, hasActionPermission, usersData } = useAuth();
+  const { currentUser, hasActionPermission } = useAuth();
   const { 
     appendRow, 
     updateRow, 
@@ -72,13 +86,10 @@ export function XnkDonHangDrawer({
     xnkMauData 
   } = useData();
 
-  // Active Tab in Drawer: 'INFO' (Thông tin PO) vs 'TIMELINE' (Chi tiết 5 chặng)
-  const [activeTab, setActiveTab] = useState('INFO');
-
-  // View Mode in Tab 2: 'TABLE' (Bảng ma trận) vs 'CALENDAR' (Dạng Lịch/Gantt)
+  // Chế độ xem lịch trình: 'TABLE' (Bảng ma trận) vs 'CALENDAR' (Dạng Lịch/Gantt)
   const [timelineViewMode, setTimelineViewMode] = useState('TABLE');
 
-  // Form Fields
+  // 1. Thông tin đơn hàng cơ bản
   const [maPo, setMaPo] = useState('');
   const [idYtuong, setIdYtuong] = useState('');
   const [idMau, setIdMau] = useState('');
@@ -88,40 +99,44 @@ export function XnkDonHangDrawer({
   const [soLuong, setSoLuong] = useState(100);
   const [donGia, setDonGia] = useState(0);
   const [tienCoc, setTienCoc] = useState(0);
-  
-  // 5 Stages Dates & Completion Status
-  // Chặng 1: Đặt cọc
+
+  // 2. Tiến độ & Lịch trình 6 chặng liên hoàn (Từ ngày chặng này = Đến ngày chặng trước)
+  // Chặng 1: Đặt hàng & Cọc
   const [ngayDatHang, setNgayDatHang] = useState(formatDateInput(new Date()));
+  const [daysStage1, setDaysStage1] = useState(1);
   const [ngayCocXong, setNgayCocXong] = useState(formatDateInput(new Date()));
   const [stage1Done, setStage1Done] = useState(true);
 
-  // Chặng 2: Sản xuất
-  const [ngayBatDauSx, setNgayBatDauSx] = useState('');
+  // Chặng 2: Sản xuất xưởng (Từ ngày = ngayCocXong)
+  const [daysStage2, setDaysStage2] = useState(15);
   const [ngaySxXong, setNgaySxXong] = useState('');
   const [stage2Done, setStage2Done] = useState(false);
 
-  // Chặng 3: Vận chuyển QT
-  const [ngayGuiHang, setNgayGuiHang] = useState('');
+  // Chặng 3: Vận chuyển quốc tế (Từ ngày = ngaySxXong)
+  const [daysStage3, setDaysStage3] = useState(7);
   const [ngayDenCang, setNgayDenCang] = useState('');
   const [trackingVanChuyen, setTrackingVanChuyen] = useState('');
   const [stage3Done, setStage3Done] = useState(false);
 
-  // Chặng 4: Hải quan
-  const [ngayMoToKhai, setNgayMoToKhai] = useState('');
+  // Chặng 4: Hải quan & Cảng (Từ ngày = ngayDenCang)
+  const [daysStage4, setDaysStage4] = useState(3);
   const [ngayThongQuan, setNgayThongQuan] = useState('');
+  const [thongTinHaiQuan, setThongTinHaiQuan] = useState('Cảng Cát Lái');
   const [stage4Done, setStage4Done] = useState(false);
 
-  // Chặng 5: Kho nhận
-  const [ngayKeoHangVeKho, setNgayKeoHangVeKho] = useState('');
+  // Chặng 5: Kho Việt Nam nhận hàng (Từ ngày = ngayThongQuan)
+  const [daysStage5, setDaysStage5] = useState(2);
   const [ngayKhoNhan, setNgayKhoNhan] = useState('');
   const [slgThucNhan, setSlgThucNhan] = useState('');
   const [stage5Done, setStage5Done] = useState(false);
 
-  // Kế hoạch bán hàng & Ngày dự kiến mở bán (Yêu cầu 5)
+  // Chặng 6: Kế hoạch phân phối & Mở bán (Từ ngày = ngayKhoNhan)
   const [keHoachBanType, setKeHoachBanType] = useState('Bán ngay');
+  const [daysStage6, setDaysStage6] = useState(0);
   const [ngayKeHoachBan, setNgayKeHoachBan] = useState('');
+  const [stage6Done, setStage6Done] = useState(false);
 
-  // Tình trạng sau cùng & Ghi chú
+  // Ghi chú & Trạng thái sau cùng
   const [manualStatusOverride, setManualStatusOverride] = useState('');
   const [ghiChu, setGhiChu] = useState('');
 
@@ -144,7 +159,7 @@ export function XnkDonHangDrawer({
     })).filter(y => y.id_y_tuong || y.ten_sp);
   }, [xnkYtuongData]);
 
-  // 2. Parsed Mẫu thử ĐÃ DUYỆT ĐẠT từ xnkMauData (Yêu cầu 2: chỉ hiển thị mẫu đã duyệt)
+  // 2. Parsed Mẫu thử ĐÃ DUYỆT ĐẠT từ xnkMauData (Chỉ hiển thị mẫu Đạt)
   const approvedSamples = useMemo(() => {
     if (!xnkMauData || xnkMauData.length <= 1) return [];
     return xnkMauData.slice(1).map((r, idx) => {
@@ -163,7 +178,6 @@ export function XnkDonHangDrawer({
       };
     }).filter(m => {
       if (!m.id_mau) return false;
-      // Chỉ lấy mẫu đã được duyệt hoặc xếp hạng Đạt
       const isApproved = m.danh_gia_xep_hang === 'Đạt' || 
                          m.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)' || 
                          m.trang_thai_duyet === 'Đồng ý';
@@ -171,34 +185,35 @@ export function XnkDonHangDrawer({
     });
   }, [xnkMauData]);
 
-  // 3. Mẫu thử được gợi ý theo Ý tưởng đã chọn (Yêu cầu 1)
+  // 3. Mẫu thử được gợi ý theo Ý tưởng đã chọn
   const suggestedSamples = useMemo(() => {
     if (!idYtuong) return approvedSamples;
     return approvedSamples.filter(s => s.id_y_tuong === idYtuong);
   }, [idYtuong, approvedSamples]);
 
-  // Tự động tính toán Trạng thái sau cùng (Yêu cầu 6)
+  // Tự động tính toán Trạng thái sau cùng
   const autoComputedStatus = useMemo(() => {
     if (manualStatusOverride === 'Đã hủy') return 'Đã hủy';
-    if (stage5Done || Boolean(ngayKhoNhan) || (slgThucNhan !== '' && Number(slgThucNhan) > 0)) {
+    if (stage6Done) return 'Đã hoàn thành';
+    if (stage5Done || Boolean(ngayKhoNhan && new Date(ngayKhoNhan) <= new Date()) || (slgThucNhan !== '' && Number(slgThucNhan) > 0)) {
       return 'Đã về kho';
     }
-    if (stage4Done || Boolean(ngayThongQuan)) {
+    if (stage4Done || Boolean(ngayThongQuan && new Date(ngayThongQuan) <= new Date())) {
       return 'Đang thông quan';
     }
-    if (stage3Done || Boolean(ngayGuiHang) || Boolean(trackingVanChuyen)) {
+    if (stage3Done || Boolean(trackingVanChuyen) || Boolean(ngayDenCang && new Date(ngayDenCang) <= new Date())) {
       return 'Đang vận chuyển';
     }
-    if (stage2Done || Boolean(ngaySxXong) || Boolean(ngayBatDauSx)) {
+    if (stage2Done || Boolean(ngaySxXong && new Date(ngaySxXong) <= new Date())) {
       return 'Đang sản xuất';
     }
     if (stage1Done || Boolean(ngayDatHang)) {
       return 'Đã đặt cọc';
     }
     return 'Chờ sản xuất';
-  }, [stage5Done, stage4Done, stage3Done, stage2Done, stage1Done, ngayKhoNhan, slgThucNhan, ngayThongQuan, ngayGuiHang, trackingVanChuyen, ngaySxXong, ngayBatDauSx, ngayDatHang, manualStatusOverride]);
+  }, [stage6Done, stage5Done, stage4Done, stage3Done, stage2Done, stage1Done, ngayKhoNhan, slgThucNhan, ngayThongQuan, trackingVanChuyen, ngayDenCang, ngaySxXong, ngayDatHang, manualStatusOverride]);
 
-  // Khởi tạo và reset dữ liệu form
+  // Khởi tạo form khi mở Drawer
   useEffect(() => {
     if (editItem) {
       setMaPo(editItem.ma_po || '');
@@ -210,51 +225,70 @@ export function XnkDonHangDrawer({
       setDonGia(editItem.don_gia !== undefined && editItem.don_gia !== '' ? editItem.don_gia : 0);
       setTienCoc(editItem.tien_coc !== undefined && editItem.tien_coc !== '' ? editItem.tien_coc : 0);
       
-      // Ngày chặng
-      const dtDatHang = editItem.ngay_dat_hang ? formatDateInput(editItem.ngay_dat_hang) : formatDateInput(new Date());
-      setNgayDatHang(dtDatHang);
-      setNgayCocXong(dtDatHang);
-      setStage1Done(Boolean(dtDatHang));
+      // Ngày & Tiến độ
+      const dtStart1 = editItem.ngay_dat_hang ? formatDateInput(editItem.ngay_dat_hang) : formatDateInput(new Date());
+      setNgayDatHang(dtStart1);
+      
+      // Chặng 1
+      const d1 = 1;
+      setDaysStage1(d1);
+      const end1 = addDays(dtStart1, d1);
+      setNgayCocXong(end1);
+      setStage1Done(Boolean(dtStart1));
 
+      // Chặng 2
       const dtSx = editItem.ngay_sx_xong ? formatDateInput(editItem.ngay_sx_xong) : '';
-      setNgaySxXong(dtSx);
-      setNgayBatDauSx(dtDatHang);
+      const d2 = dtSx ? (calcDurationDays(end1, dtSx) || 1) : 15;
+      setDaysStage2(d2);
+      const end2 = dtSx || addDays(end1, d2);
+      setNgaySxXong(end2);
       setStage2Done(Boolean(dtSx));
 
-      const dtGui = editItem.ngay_gui_hang ? formatDateInput(editItem.ngay_gui_hang) : '';
-      setNgayGuiHang(dtGui);
+      // Chặng 3
+      const dtGui = editItem.ngay_gui_hang ? formatDateInput(editItem.ngay_gui_hang) : end2;
       setTrackingVanChuyen(editItem.tracking_van_chuyen || '');
-      setStage3Done(Boolean(dtGui));
+      const d3 = 7;
+      setDaysStage3(d3);
+      const end3 = addDays(end2, d3);
+      setNgayDenCang(end3);
+      setStage3Done(Boolean(editItem.tracking_van_chuyen || editItem.ngay_gui_hang));
 
+      // Chặng 4
       const dtTq = editItem.ngay_thong_quan ? formatDateInput(editItem.ngay_thong_quan) : '';
-      setNgayThongQuan(dtTq);
+      const d4 = dtTq ? (calcDurationDays(end3, dtTq) || 1) : 3;
+      setDaysStage4(d4);
+      const end4 = dtTq || addDays(end3, d4);
+      setNgayThongQuan(end4);
       setStage4Done(Boolean(dtTq));
 
+      // Chặng 5
       const dtKho = editItem.ngay_kho_nhan ? formatDateInput(editItem.ngay_kho_nhan) : '';
-      setNgayKhoNhan(dtKho);
-      setNgayKeoHangVeKho(dtKho);
+      const d5 = dtKho ? (calcDurationDays(end4, dtKho) || 1) : 2;
+      setDaysStage5(d5);
+      const end5 = dtKho || addDays(end4, d5);
+      setNgayKhoNhan(end5);
       setSlgThucNhan(editItem.slg_thuc_nhan !== undefined && editItem.slg_thuc_nhan !== '' ? editItem.slg_thuc_nhan : '');
       setStage5Done(Boolean(dtKho));
 
-      // Phân tích kế hoạch bán hàng
+      // Chặng 6: Kế hoạch bán
       const rawKeHoach = editItem.ke_hoach_ban || 'Bán ngay';
-      if (rawKeHoach.includes('Bán sau')) {
-        setKeHoachBanType('Bán sau (Trữ kho)');
-      } else {
-        setKeHoachBanType('Bán ngay');
-      }
-
-      // Trích xuất ngày bán nếu có trong ngoặc vuông [dd/mm/yyyy]
+      const isBanSau = rawKeHoach.includes('Bán sau');
+      setKeHoachBanType(isBanSau ? 'Bán sau (Trữ kho)' : 'Bán ngay');
       const matchDate = rawKeHoach.match(/\[(.*?)\]/);
+      let dtBan = '';
       if (matchDate && matchDate[1]) {
-        setNgayKeHoachBan(formatDateInput(matchDate[1]));
-      } else if (dtKho) {
-        setNgayKeHoachBan(dtKho);
+        dtBan = formatDateInput(matchDate[1]);
+      } else if (isBanSau) {
+        dtBan = addDays(end5, 7);
       } else {
-        setNgayKeHoachBan('');
+        dtBan = end5;
       }
+      const d6 = calcDurationDays(end5, dtBan);
+      setDaysStage6(d6);
+      setNgayKeHoachBan(dtBan);
+      setStage6Done(Boolean(rawKeHoach && dtKho && new Date() >= new Date(dtBan)));
 
-      // Tìm ý tưởng tương ứng qua mẫu thử
+      // Tra cứu ý tưởng từ mẫu
       const matchingSample = approvedSamples.find(s => s.id_mau === editItem.id_mau);
       if (matchingSample?.id_y_tuong) {
         setIdYtuong(matchingSample.id_y_tuong);
@@ -263,14 +297,10 @@ export function XnkDonHangDrawer({
         setIdYtuong(foundIdea?.id_y_tuong || '');
       }
 
-      if (editItem.tinh_trang_cuoi === 'Đã hủy') {
-        setManualStatusOverride('Đã hủy');
-      } else {
-        setManualStatusOverride('');
-      }
-
+      setManualStatusOverride(editItem.tinh_trang_cuoi === 'Đã hủy' ? 'Đã hủy' : '');
       setGhiChu(editItem.ghi_chu || '');
     } else {
+      // Đơn mới
       const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       setMaPo(`PO-${todayStr}-${randomSuffix}`);
@@ -295,37 +325,46 @@ export function XnkDonHangDrawer({
       
       const nowInput = formatDateInput(new Date());
       setNgayDatHang(nowInput);
-      setNgayCocXong(nowInput);
+      setDaysStage1(1);
+      const end1 = addDays(nowInput, 1);
+      setNgayCocXong(end1);
       setStage1Done(true);
 
-      setNgayBatDauSx('');
-      setNgaySxXong('');
+      setDaysStage2(15);
+      const end2 = addDays(end1, 15);
+      setNgaySxXong(end2);
       setStage2Done(false);
 
-      setNgayGuiHang('');
-      setNgayDenCang('');
+      setDaysStage3(7);
+      const end3 = addDays(end2, 7);
+      setNgayDenCang(end3);
       setTrackingVanChuyen('');
       setStage3Done(false);
 
-      setNgayMoToKhai('');
-      setNgayThongQuan('');
+      setDaysStage4(3);
+      const end4 = addDays(end3, 3);
+      setNgayThongQuan(end4);
+      setThongTinHaiQuan('Cảng Cát Lái');
       setStage4Done(false);
 
-      setNgayKeoHangVeKho('');
-      setNgayKhoNhan('');
+      setDaysStage5(2);
+      const end5 = addDays(end4, 2);
+      setNgayKhoNhan(end5);
       setSlgThucNhan('');
       setStage5Done(false);
 
       setKeHoachBanType('Bán ngay');
-      setNgayKeHoachBan('');
+      setDaysStage6(0);
+      setNgayKeHoachBan(end5);
+      setStage6Done(false);
+
       setManualStatusOverride('');
       setGhiChu('');
     }
-    setActiveTab('INFO');
     setErrorMsg('');
-  }, [editItem, initialSample, isOpen, approvedSamples, ytuongOptions]);
+  }, [editItem, initialSample, isOpen]);
 
-  // Luồng 1 (Yêu cầu 1): Khi chọn Ý tưởng ➔ Tự điền SKU, Tên SP và gợi ý Mẫu thử
+  // Luồng 1: Chọn Ý tưởng -> Tự điền SKU, Tên SP và gợi ý Mẫu thử
   const handleSelectIdea = (selectedIdeaId) => {
     setIdYtuong(selectedIdeaId);
     const idea = ytuongOptions.find(y => y.id_y_tuong === selectedIdeaId);
@@ -334,10 +373,8 @@ export function XnkDonHangDrawer({
       if (idea.ten_sp) setTenSp(idea.ten_sp);
     }
 
-    // Lọc mẫu đã duyệt cho ý tưởng này
     const matchingSamples = approvedSamples.filter(s => s.id_y_tuong === selectedIdeaId);
     if (matchingSamples.length === 1) {
-      // Tự động chọn luôn mẫu duy nhất đã duyệt
       const singleSample = matchingSamples[0];
       setIdMau(singleSample.id_mau);
       if (singleSample.ten_ncc) setTenNcc(singleSample.ten_ncc);
@@ -347,7 +384,7 @@ export function XnkDonHangDrawer({
     }
   };
 
-  // Luồng 2 (Yêu cầu 3): Khi chọn Mẫu thử (kể cả chưa chọn Ý tưởng) ➔ Tự động liên kết luôn Ý tưởng
+  // Luồng 2: Chọn Mẫu thử -> Tự động liên kết luôn Ý tưởng
   const handleSelectSample = (sampleId) => {
     setIdMau(sampleId);
     const foundSample = approvedSamples.find(s => s.id_mau === sampleId);
@@ -355,7 +392,6 @@ export function XnkDonHangDrawer({
       if (foundSample.ten_ncc) setTenNcc(foundSample.ten_ncc);
       if (foundSample.gia_mau && donGia === 0) setDonGia(foundSample.gia_mau);
 
-      // Tự động liên kết ngược lại ý tưởng
       if (foundSample.id_y_tuong) {
         setIdYtuong(foundSample.id_y_tuong);
         const relatedIdea = ytuongOptions.find(y => y.id_y_tuong === foundSample.id_y_tuong);
@@ -367,26 +403,195 @@ export function XnkDonHangDrawer({
     }
   };
 
-  // Tính số ngày của từng chặng
-  const durStage1 = calcDurationDays(ngayDatHang, ngayCocXong) ?? 1;
-  const durStage2 = calcDurationDays(ngayBatDauSx || ngayDatHang, ngaySxXong);
-  const durStage3 = calcDurationDays(ngayGuiHang, ngayDenCang || ngayThongQuan);
-  const durStage4 = calcDurationDays(ngayMoToKhai || ngayGuiHang, ngayThongQuan);
-  const durStage5 = calcDurationDays(ngayKeoHangVeKho || ngayThongQuan, ngayKhoNhan);
+  // -------------------------------------------------------------
+  // BỘ HÀM DỜI LỊCH DÂY CHUYỀN (Từ ngày chặng này = Đến ngày chặng trước)
+  // -------------------------------------------------------------
+  // Khi đổi ngày bắt đầu chặng 1
+  const handleStart1Change = (val) => {
+    setNgayDatHang(val);
+    const end1 = addDays(val, daysStage1);
+    const end2 = addDays(end1, daysStage2);
+    const end3 = addDays(end2, daysStage3);
+    const end4 = addDays(end3, daysStage4);
+    const end5 = addDays(end4, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgayCocXong(end1);
+    setNgaySxXong(end2);
+    setNgayDenCang(end3);
+    setNgayThongQuan(end4);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
 
-  // Tổng lead time
-  const totalLeadDays = (durStage1 || 0) + (durStage2 || 0) + (durStage3 || 0) + (durStage4 || 0) + (durStage5 || 0);
+  // Chặng 1: Sửa số ngày hoặc sửa đến ngày
+  const handleDays1Change = (val) => {
+    const d = Math.max(0, parseInt(val, 10) || 0);
+    setDaysStage1(d);
+    const end1 = addDays(ngayDatHang, d);
+    const end2 = addDays(end1, daysStage2);
+    const end3 = addDays(end2, daysStage3);
+    const end4 = addDays(end3, daysStage4);
+    const end5 = addDays(end4, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgayCocXong(end1);
+    setNgaySxXong(end2);
+    setNgayDenCang(end3);
+    setNgayThongQuan(end4);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  const handleEnd1Change = (val) => {
+    setNgayCocXong(val);
+    const d = calcDurationDays(ngayDatHang, val);
+    setDaysStage1(d);
+    const end2 = addDays(val, daysStage2);
+    const end3 = addDays(end2, daysStage3);
+    const end4 = addDays(end3, daysStage4);
+    const end5 = addDays(end4, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgaySxXong(end2);
+    setNgayDenCang(end3);
+    setNgayThongQuan(end4);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  // Chặng 2: Sửa số ngày hoặc sửa đến ngày
+  const handleDays2Change = (val) => {
+    const d = Math.max(0, parseInt(val, 10) || 0);
+    setDaysStage2(d);
+    const end2 = addDays(ngayCocXong, d);
+    const end3 = addDays(end2, daysStage3);
+    const end4 = addDays(end3, daysStage4);
+    const end5 = addDays(end4, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgaySxXong(end2);
+    setNgayDenCang(end3);
+    setNgayThongQuan(end4);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  const handleEnd2Change = (val) => {
+    setNgaySxXong(val);
+    const d = calcDurationDays(ngayCocXong, val);
+    setDaysStage2(d);
+    const end3 = addDays(val, daysStage3);
+    const end4 = addDays(end3, daysStage4);
+    const end5 = addDays(end4, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgayDenCang(end3);
+    setNgayThongQuan(end4);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  // Chặng 3: Sửa số ngày hoặc sửa đến ngày
+  const handleDays3Change = (val) => {
+    const d = Math.max(0, parseInt(val, 10) || 0);
+    setDaysStage3(d);
+    const end3 = addDays(ngaySxXong, d);
+    const end4 = addDays(end3, daysStage4);
+    const end5 = addDays(end4, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgayDenCang(end3);
+    setNgayThongQuan(end4);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  const handleEnd3Change = (val) => {
+    setNgayDenCang(val);
+    const d = calcDurationDays(ngaySxXong, val);
+    setDaysStage3(d);
+    const end4 = addDays(val, daysStage4);
+    const end5 = addDays(end4, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgayThongQuan(end4);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  // Chặng 4: Sửa số ngày hoặc sửa đến ngày
+  const handleDays4Change = (val) => {
+    const d = Math.max(0, parseInt(val, 10) || 0);
+    setDaysStage4(d);
+    const end4 = addDays(ngayDenCang, d);
+    const end5 = addDays(end4, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgayThongQuan(end4);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  const handleEnd4Change = (val) => {
+    setNgayThongQuan(val);
+    const d = calcDurationDays(ngayDenCang, val);
+    setDaysStage4(d);
+    const end5 = addDays(val, daysStage5);
+    const end6 = addDays(end5, daysStage6);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  // Chặng 5: Sửa số ngày hoặc sửa đến ngày
+  const handleDays5Change = (val) => {
+    const d = Math.max(0, parseInt(val, 10) || 0);
+    setDaysStage5(d);
+    const end5 = addDays(ngayThongQuan, d);
+    const end6 = addDays(end5, daysStage6);
+    setNgayKhoNhan(end5);
+    setNgayKeHoachBan(end6);
+  };
+
+  const handleEnd5Change = (val) => {
+    setNgayKhoNhan(val);
+    const d = calcDurationDays(ngayThongQuan, val);
+    setDaysStage5(d);
+    const end6 = addDays(val, daysStage6);
+    setNgayKeHoachBan(end6);
+  };
+
+  // Chặng 6: Kế hoạch phân phối
+  const handleDays6Change = (val) => {
+    const d = Math.max(0, parseInt(val, 10) || 0);
+    setDaysStage6(d);
+    const end6 = addDays(ngayKhoNhan, d);
+    setNgayKeHoachBan(end6);
+    setKeHoachBanType(d === 0 ? 'Bán ngay' : 'Bán sau (Trữ kho)');
+  };
+
+  const handleEnd6Change = (val) => {
+    setNgayKeHoachBan(val);
+    const d = calcDurationDays(ngayKhoNhan, val);
+    setDaysStage6(d);
+    setKeHoachBanType(d === 0 ? 'Bán ngay' : 'Bán sau (Trữ kho)');
+  };
+
+  const handlePlanTypeChange = (type) => {
+    setKeHoachBanType(type);
+    if (type === 'Bán ngay') {
+      setDaysStage6(0);
+      setNgayKeHoachBan(ngayKhoNhan);
+    } else {
+      const d = daysStage6 > 0 ? daysStage6 : 7;
+      setDaysStage6(d);
+      setNgayKeHoachBan(addDays(ngayKhoNhan, d));
+    }
+  };
+
+  // Tổng thời gian Lead-time toàn bộ 6 chặng
+  const totalLeadDays = (daysStage1 || 0) + (daysStage2 || 0) + (daysStage3 || 0) + (daysStage4 || 0) + (daysStage5 || 0) + (daysStage6 || 0);
 
   // Submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!tenSp.trim()) {
-      setActiveTab('INFO');
       setErrorMsg('Vui lòng nhập hoặc chọn Tên sản phẩm!');
       return;
     }
     if (cleanNumber(soLuong) <= 0) {
-      setActiveTab('INFO');
       setErrorMsg('Số lượng đặt hàng phải lớn hơn 0!');
       return;
     }
@@ -395,7 +600,7 @@ export function XnkDonHangDrawer({
     setErrorMsg('');
 
     try {
-      // Định dạng chuỗi Kế hoạch bán hàng kèm Ngày (Yêu cầu 5)
+      // Chuỗi Kế hoạch bán hàng kèm Ngày mở bán
       let formattedKeHoach = keHoachBanType;
       if (ngayKeHoachBan) {
         formattedKeHoach = `${keHoachBanType} [${formatDateVN(ngayKeHoachBan)}]`;
@@ -403,10 +608,10 @@ export function XnkDonHangDrawer({
         formattedKeHoach = `${keHoachBanType} [${formatDateVN(ngayKhoNhan)}]`;
       }
 
-      // Trạng thái sau cùng tự động (Yêu cầu 6)
       const finalStatus = manualStatusOverride || autoComputedStatus;
 
-      // Columns: ['ma_po', 'id_mau', 'sku', 'ten_sp', 'ten_ncc', 'so_luong', 'don_gia', 'tong_tien', 'tien_coc', 'ngay_dat_hang', 'ngay_sx_xong', 'tracking_van_chuyen', 'ngay_gui_hang', 'ngay_thong_quan', 'ngay_kho_nhan', 'slg_thuc_nhan', 'ke_hoach_ban', 'tinh_trang_cuoi', 'ghi_chu']
+      // 19 Cột chuẩn của Google Sheet XNK_DON_HANG:
+      // ['ma_po', 'id_mau', 'sku', 'ten_sp', 'ten_ncc', 'so_luong', 'don_gia', 'tong_tien', 'tien_coc', 'ngay_dat_hang', 'ngay_sx_xong', 'tracking_van_chuyen', 'ngay_gui_hang', 'ngay_thong_quan', 'ngay_kho_nhan', 'slg_thuc_nhan', 'ke_hoach_ban', 'tinh_trang_cuoi', 'ghi_chu']
       const rowValues = [
         maPo.trim(),
         idMau.trim(),
@@ -420,7 +625,7 @@ export function XnkDonHangDrawer({
         ngayDatHang,
         ngaySxXong,
         trackingVanChuyen.trim(),
-        ngayGuiHang,
+        ngaySxXong, // Từ ngày chặng 3 nối tiếp từ kết thúc SX
         ngayThongQuan,
         ngayKhoNhan,
         slgThucNhan !== '' ? cleanNumber(slgThucNhan) : '',
@@ -468,667 +673,753 @@ export function XnkDonHangDrawer({
       isOpen={isOpen}
       onClose={onClose}
       title={editItem ? `Cập Nhật Đơn Hàng PO: ${maPo}` : 'Tạo Đơn Hàng Sản Xuất Mới (PO)'}
-      maxWidth="max-w-4xl"
+      maxWidth="max-w-5xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
         {errorMsg && (
-          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
-            {errorMsg}
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
-        {/* 1. Sub-Tabs Switcher (Yêu cầu 4: Tách thời gian chi tiết thành view riêng) */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setActiveTab('INFO')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'INFO'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <FileCheck className="w-4 h-4" />
-              <span>1. Thông tin đơn hàng (PO)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('TIMELINE')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'TIMELINE'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Clock className="w-4 h-4" />
-              <span>2. Tiến độ & Lịch trình 5 chặng</span>
-              {totalLeadDays > 0 && (
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  activeTab === 'TIMELINE' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
-                }`}>
-                  {totalLeadDays} ngày
-                </span>
-              )}
-            </button>
+        {/* Header thông tin nhanh & Trạng thái sau cùng tự động */}
+        <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500">Mã PO:</span>
+            <span className="px-2.5 py-1 bg-white border border-slate-200 text-blue-700 font-extrabold text-xs rounded-lg shadow-2xs">
+              {maPo}
+            </span>
           </div>
 
-          {/* Badge Trạng thái sau cùng tự động (Yêu cầu 6) */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-slate-400">Trạng thái:</span>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-blue-500" />
-              {manualStatusOverride || autoComputedStatus}
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Tổng Lead-time: <strong className="text-blue-700 font-bold">{totalLeadDays} ngày</strong></span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-500">Trạng thái tự động:</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-blue-600" />
+                {manualStatusOverride || autoComputedStatus}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* TAB 1: THÔNG TIN ĐƠN HÀNG (PO) */}
-        {activeTab === 'INFO' && (
-          <div className="space-y-4">
-            {/* Hàng 1: Mã PO & Chọn Ý tưởng sản phẩm (Yêu cầu 1) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Mã đơn hàng (PO)
-                </label>
-                <input
-                  type="text"
-                  value={maPo}
-                  readOnly
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-blue-700 focus:outline-none"
-                />
-              </div>
+        {/* ============================================================ */}
+        {/* PHẦN 1: THÔNG TIN ĐƠN HÀNG & LIÊN KẾT Ý TƯỞNG / MẪU THỬ      */}
+        {/* ============================================================ */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3.5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <FileCheck className="w-4 h-4 text-blue-600" />
+              1. Thông tin sản phẩm & Đối tác xưởng
+            </span>
+            <span className="text-[11px] text-slate-400">Chọn ý tưởng hoặc mẫu thử đã duyệt</span>
+          </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700">
-                    💡 1. Chọn từ Ý tưởng sản phẩm
-                  </label>
-                  {ytuongOptions.length > 0 && (
-                    <span className="text-[11px] text-blue-600 font-semibold">
-                      {ytuongOptions.length} Ý tưởng có sẵn
-                    </span>
-                  )}
-                </div>
-                <select
-                  value={idYtuong}
-                  onChange={(e) => handleSelectIdea(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                >
-                  <option value="">-- Chọn ý tưởng sản phẩm (Gợi ý Mẫu) --</option>
-                  {ytuongOptions.map(y => (
-                    <option key={y.id_y_tuong} value={y.id_y_tuong}>
-                      [{y.sku_du_kien || y.id_y_tuong}] {y.ten_sp} ({y.trang_thai})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Hàng 2: Chọn từ Mẫu thử ĐÃ DUYỆT (Yêu cầu 2 & 3) */}
+          {/* Chọn Ý tưởng sản phẩm (Gợi ý Mẫu) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-bold text-slate-700">
-                  📦 2. Chọn Mẫu thử đã duyệt đạt chuẩn <span className="text-emerald-600 font-semibold">(Chỉ mẫu Đạt)</span>
+                  💡 1. Chọn từ Ý tưởng sản phẩm
+                </label>
+                {ytuongOptions.length > 0 && (
+                  <span className="text-[11px] text-blue-600 font-semibold">
+                    {ytuongOptions.length} ý tưởng
+                  </span>
+                )}
+              </div>
+              <select
+                value={idYtuong}
+                onChange={(e) => handleSelectIdea(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition"
+              >
+                <option value="">-- Chọn ý tưởng sản phẩm (Gợi ý Mẫu thử) --</option>
+                {ytuongOptions.map(y => (
+                  <option key={y.id_y_tuong} value={y.id_y_tuong}>
+                    [{y.sku_du_kien || y.id_y_tuong}] {y.ten_sp} ({y.trang_thai})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Chọn Mẫu thử đã duyệt đạt chuẩn */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  📦 2. Mẫu thử đã duyệt đạt chuẩn <span className="text-emerald-600 font-semibold">(Chỉ mẫu Đạt)</span>
                 </label>
                 {suggestedSamples.length > 0 && (
                   <span className="text-[11px] text-emerald-600 font-bold">
-                    {suggestedSamples.length} Mẫu đạt chuẩn
+                    {suggestedSamples.length} mẫu đạt
                   </span>
                 )}
               </div>
               <select
                 value={idMau}
                 onChange={(e) => handleSelectSample(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                className="w-full px-3 py-2 bg-emerald-50/40 hover:bg-white border border-emerald-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition"
               >
-                <option value="">-- Chọn mẫu thử đã duyệt (Tự động điền SKU, Tên SP, NCC) --</option>
+                <option value="">-- Chọn mẫu thử đã duyệt (Tự liên kết Ý tưởng, SKU, Tên, NCC) --</option>
                 {suggestedSamples.map(s => (
                   <option key={s.id_mau} value={s.id_mau}>
                     [{s.id_mau}] NCC: {s.ten_ncc} {s.gia_mau ? `• Giá mẫu: ${formatCurrency(s.gia_mau)}` : ''} - (Xếp hạng: {s.danh_gia_xep_hang || 'Đạt'})
                   </option>
                 ))}
               </select>
-              {suggestedSamples.length === 0 && idYtuong && (
-                <p className="text-[11px] text-amber-600 mt-1 italic">
-                  * Ý tưởng này chưa có mẫu thử nào được Sếp duyệt Đạt. Bạn vẫn có thể điền thông tin trực tiếp bên dưới.
-                </p>
-              )}
             </div>
+          </div>
 
-            {/* Hàng 3: SKU, Tên sản phẩm, Nhà cung cấp */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  SKU sản phẩm <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
-                  placeholder="VD: LNK-KB-01..."
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Tên sản phẩm <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={tenSp}
-                  onChange={(e) => setTenSp(e.target.value)}
-                  placeholder="VD: Nồi chiên không dầu Lock&King..."
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nhà cung cấp / Xưởng SX
-                </label>
-                <input
-                  type="text"
-                  value={tenNcc}
-                  onChange={(e) => setTenNcc(e.target.value)}
-                  placeholder="VD: Xưởng Phật Sơn A..."
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Hàng 4: Số lượng, Đơn giá, Tổng tiền, Tiền cọc */}
-            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200 space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Số lượng đặt (cái) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={soLuong}
-                    onChange={(e) => setSoLuong(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Đơn giá (VNĐ)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={donGia}
-                    onChange={(e) => setDonGia(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Tổng giá trị PO
-                  </label>
-                  <input
-                    type="text"
-                    readOnly
-                    value={formatCurrency(tongTien)}
-                    className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black text-emerald-700 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Tiền cọc xưởng (VNĐ)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={tienCoc}
-                    onChange={(e) => setTienCoc(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-amber-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Hàng 5: KẾ HOẠCH BÁN HÀNG CÓ NGÀY CỤ THỂ (Yêu cầu 5) */}
-            <div className="bg-amber-50/40 p-3.5 rounded-2xl border border-amber-200/70 space-y-2">
-              <span className="text-xs font-bold text-amber-900 uppercase tracking-wider block">
-                🎯 Kế hoạch phân phối & Mở bán hàng
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Hình thức bán hàng
-                  </label>
-                  <select
-                    value={keHoachBanType}
-                    onChange={(e) => setKeHoachBanType(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
-                  >
-                    <option value="Bán ngay">Bán ngay (Ngay khi hàng về tới kho)</option>
-                    <option value="Bán sau (Trữ kho)">Bán sau (Trữ kho / Theo chiến dịch)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Ngày dự kiến mở bán
-                  </label>
-                  <input
-                    type="date"
-                    value={ngayKeHoachBan}
-                    onChange={(e) => setNgayKeHoachBan(e.target.value)}
-                    placeholder="dd/mm/yyyy"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Ghi chú & Nút chuyển sang Tab 2 */}
+          {/* SKU, Tên sản phẩm, Nhà cung cấp */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Ghi chú thêm về đơn hàng
+                SKU sản phẩm <span className="text-rose-500">*</span>
               </label>
-              <textarea
-                rows={2}
-                value={ghiChu}
-                onChange={(e) => setGhiChu(e.target.value)}
-                placeholder="Yêu cầu đóng gói, tem phụ tiếng Việt, quy cách thùng..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none"
+              <input
+                type="text"
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                placeholder="VD: LNK-KB-01..."
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                required
               />
             </div>
 
-            {/* Nút gợi ý chuyển nhanh sang Tab Lịch trình */}
-            <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-between">
-              <div className="text-xs text-indigo-900 font-medium">
-                👉 Thiết lập thời gian chi tiết cho 5 chặng (Cọc ➔ SX ➔ Vận chuyển ➔ Hải quan ➔ Kho)?
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Tên sản phẩm <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={tenSp}
+                onChange={(e) => setTenSp(e.target.value)}
+                placeholder="VD: Nồi chiên không dầu Lock&King..."
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Nhà cung cấp / Xưởng sản xuất
+              </label>
+              <input
+                type="text"
+                value={tenNcc}
+                onChange={(e) => setTenNcc(e.target.value)}
+                placeholder="VD: Xưởng Phật Sơn A..."
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ============================================================ */}
+        {/* PHẦN 2: TÀI CHÍNH & NGÂN SÁCH ĐƠN HÀNG                        */}
+        {/* ============================================================ */}
+        <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 space-y-2">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+            <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              2. Số lượng đặt & Tài chính PO
+            </span>
+            <span className="text-[11px] text-slate-500 font-semibold">Tự động tính tổng ngân sách</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Số lượng đặt (cái) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={soLuong}
+                onChange={(e) => setSoLuong(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Đơn giá (VNĐ)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={donGia}
+                onChange={(e) => setDonGia(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Tổng giá trị PO
+              </label>
+              <input
+                type="text"
+                readOnly
+                value={formatCurrency(tongTien)}
+                className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-black text-emerald-700 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Tiền cọc xưởng (VNĐ)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={tienCoc}
+                onChange={(e) => setTienCoc(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-amber-700 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ============================================================ */}
+        {/* PHẦN 3: TIẾN ĐỘ LỊCH TRÌNH & KẾ HOẠCH PHÂN PHỐI (6 CHẶNG)    */}
+        {/* Yêu cầu 1: Cho luôn vào thông tin đơn hàng                   */}
+        {/* Yêu cầu 2: Kế hoạch phân phối đưa vào tiến độ lịch trình     */}
+        {/* Yêu cầu 3: Từ ngày chặng này = Đến ngày chặng trước          */}
+        {/* Yêu cầu 4: Cho sửa số ngày và sửa chi tiết                   */}
+        {/* ============================================================ */}
+        <div className="bg-white p-4 rounded-2xl border-2 border-indigo-100 shadow-xs space-y-3.5">
+          {/* Header tiến độ & Switcher Bảng vs Lịch */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <span className="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-indigo-600" />
+                3. Tiến độ lịch trình & Kế hoạch phân phối (6 chặng liên hoàn)
+              </span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                ⚡ Tự động nối tiếp: <strong>Từ ngày của quy trình này là Đến ngày của quy trình trước</strong>. Bạn có thể sửa trực tiếp <strong>Số ngày</strong> hoặc <strong>Ngày đến</strong>!
+              </p>
+            </div>
+
+            {/* View Switcher: Bảng ma trận vs Lịch Gantt */}
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
               <button
                 type="button"
-                onClick={() => setActiveTab('TIMELINE')}
-                className="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition flex items-center gap-1 cursor-pointer"
+                onClick={() => setTimelineViewMode('TABLE')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  timelineViewMode === 'TABLE'
+                    ? 'bg-white text-blue-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <span>Sang Lịch trình 5 chặng</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <Table className="w-3.5 h-3.5" />
+                <span>Bảng chi tiết 6 chặng</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTimelineViewMode('CALENDAR')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  timelineViewMode === 'CALENDAR'
+                    ? 'bg-white text-indigo-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <CalendarRange className="w-3.5 h-3.5" />
+                <span>Lịch Timeline Gantt</span>
               </button>
             </div>
           </div>
-        )}
 
-        {/* TAB 2: TIẾN ĐỘ & LỊCH TRÌNH 5 CHẶNG CHI TIẾT (Yêu cầu 4) */}
-        {activeTab === 'TIMELINE' && (
-          <div className="space-y-4">
-            {/* View Mode Switcher: Bảng vs Lịch */}
-            <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-2xl border border-slate-200">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setTimelineViewMode('TABLE')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                    timelineViewMode === 'TABLE'
-                      ? 'bg-white text-blue-700 border border-slate-200 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Table className="w-3.5 h-3.5" />
-                  <span>Dạng Bảng ma trận 5 chặng</span>
-                </button>
+          {/* 3.1 DẠNG BẢNG MA TRẬN 6 CHẶNG CHI TIẾT */}
+          {timelineViewMode === 'TABLE' && (
+            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50/90 text-slate-700 font-bold border-b border-slate-200 select-none">
+                    <th className="py-2.5 px-3 min-w-[170px]">Quy trình thực hiện</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[130px]">Từ ngày</th>
+                    <th className="py-2.5 px-3 text-center whitespace-nowrap w-24">Số ngày (Sửa)</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[130px]">Đến ngày (Sửa)</th>
+                    <th className="py-2.5 px-3 text-center whitespace-nowrap w-28">Trạng thái</th>
+                    <th className="py-2.5 px-3 min-w-[200px]">Thông tin chi tiết (Cho phép sửa)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {/* Chặng 1: Đặt hàng & Cọc */}
+                  <tr className={`hover:bg-slate-50/60 transition ${stage1Done ? 'bg-emerald-50/30' : ''}`}>
+                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-extrabold">1</span>
+                        <span>1. Đặt hàng & Cọc</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="date"
+                        value={ngayDatHang}
+                        onChange={(e) => handleStart1Change(e.target.value)}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500"
+                        title="Ngày bắt đầu ký hợp đồng và cọc"
+                      />
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      <div className="inline-flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          value={daysStage1}
+                          onChange={(e) => handleDays1Change(e.target.value)}
+                          className="w-14 px-1.5 py-1 text-center bg-white border border-blue-200 rounded-lg text-xs font-bold text-blue-700 focus:ring-1 focus:ring-blue-500"
+                        />
+                        <span className="text-[11px] text-slate-500">ngày</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="date"
+                        value={ngayCocXong}
+                        onChange={(e) => handleEnd1Change(e.target.value)}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setStage1Done(!stage1Done)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
+                          stage1Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                        }`}
+                      >
+                        {stage1Done ? <Check className="w-3.5 h-3.5" /> : null}
+                        {stage1Done ? 'Đã xong' : 'Chưa xong'}
+                      </button>
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 text-[11px] whitespace-nowrap">Tiền cọc:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={tienCoc}
+                          onChange={(e) => setTienCoc(e.target.value)}
+                          placeholder="Tiền cọc VNĐ..."
+                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-amber-700"
+                        />
+                      </div>
+                    </td>
+                  </tr>
 
-                <button
-                  type="button"
-                  onClick={() => setTimelineViewMode('CALENDAR')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                    timelineViewMode === 'CALENDAR'
-                      ? 'bg-white text-indigo-700 border border-slate-200 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <CalendarRange className="w-3.5 h-3.5" />
-                  <span>Dạng Lịch Timeline Gantt</span>
-                </button>
-              </div>
+                  {/* Chặng 2: Sản xuất hàng loạt */}
+                  <tr className={`hover:bg-slate-50/60 transition ${stage2Done ? 'bg-emerald-50/30' : ''}`}>
+                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-extrabold">2</span>
+                        <span>2. Sản xuất xưởng</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
+                        {formatDateVN(ngayCocXong)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 1)</span>
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      <div className="inline-flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          value={daysStage2}
+                          onChange={(e) => handleDays2Change(e.target.value)}
+                          className="w-14 px-1.5 py-1 text-center bg-white border border-purple-200 rounded-lg text-xs font-bold text-purple-700 focus:ring-1 focus:ring-purple-500"
+                        />
+                        <span className="text-[11px] text-slate-500">ngày</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="date"
+                        value={ngaySxXong}
+                        onChange={(e) => handleEnd2Change(e.target.value)}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-purple-500"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setStage2Done(!stage2Done)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
+                          stage2Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                        }`}
+                      >
+                        {stage2Done ? <Check className="w-3.5 h-3.5" /> : null}
+                        {stage2Done ? 'Đã xong' : 'Chưa xong'}
+                      </button>
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 text-[11px] whitespace-nowrap">Xưởng SX:</span>
+                        <input
+                          type="text"
+                          value={tenNcc}
+                          onChange={(e) => setTenNcc(e.target.value)}
+                          placeholder="Tên xưởng SX..."
+                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
+                        />
+                      </div>
+                    </td>
+                  </tr>
 
-              <div className="text-xs font-bold text-slate-700">
-                Tổng lead-time: <span className="text-blue-600">{totalLeadDays} ngày</span>
-              </div>
-            </div>
-
-            {/* 2.1 VIEW DẠNG BẢNG MA TRẬN 5 CHẶNG */}
-            {timelineViewMode === 'TABLE' && (
-              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                      <th className="py-2.5 px-3 whitespace-nowrap">Chặng quy trình</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Từ ngày</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap">Đến ngày</th>
-                      <th className="py-2.5 px-3 text-center whitespace-nowrap">Số ngày</th>
-                      <th className="py-2.5 px-3 text-center whitespace-nowrap">Trạng thái chặng</th>
-                      <th className="py-2.5 px-3 min-w-[150px]">Thông tin chi tiết</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {/* Chặng 1 */}
-                    <tr className={stage1Done ? 'bg-emerald-50/30' : ''}>
-                      <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">1</span>
-                          <span>Đặt hàng & Cọc</span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3">
+                  {/* Chặng 3: Vận chuyển quốc tế */}
+                  <tr className={`hover:bg-slate-50/60 transition ${stage3Done ? 'bg-emerald-50/30' : ''}`}>
+                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-extrabold">3</span>
+                        <span>3. Vận chuyển QT</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
+                        {formatDateVN(ngaySxXong)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 2)</span>
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      <div className="inline-flex items-center gap-1">
                         <input
-                          type="date"
-                          value={ngayDatHang}
-                          onChange={(e) => setNgayDatHang(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
+                          type="number"
+                          min="0"
+                          value={daysStage3}
+                          onChange={(e) => handleDays3Change(e.target.value)}
+                          className="w-14 px-1.5 py-1 text-center bg-white border border-indigo-200 rounded-lg text-xs font-bold text-indigo-700 focus:ring-1 focus:ring-indigo-500"
                         />
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="date"
-                          value={ngayCocXong}
-                          onChange={(e) => setNgayCocXong(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
-                        />
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-blue-700">
-                        {durStage1 !== null ? `${durStage1} ngày` : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setStage1Done(!stage1Done)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
-                            stage1Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                          }`}
-                        >
-                          {stage1Done ? <Check className="w-3.5 h-3.5" /> : null}
-                          {stage1Done ? 'Đã xong' : 'Chưa xong'}
-                        </button>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        Tiền cọc: <strong className="text-amber-700">{formatCurrency(tienCoc)}</strong>
-                      </td>
-                    </tr>
-
-                    {/* Chặng 2 */}
-                    <tr className={stage2Done ? 'bg-emerald-50/30' : ''}>
-                      <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px]">2</span>
-                          <span>Sản xuất xưởng</span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="date"
-                          value={ngayBatDauSx}
-                          onChange={(e) => setNgayBatDauSx(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
-                        />
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="date"
-                          value={ngaySxXong}
-                          onChange={(e) => setNgaySxXong(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
-                        />
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-purple-700">
-                        {durStage2 !== null ? `${durStage2} ngày` : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setStage2Done(!stage2Done)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
-                            stage2Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                          }`}
-                        >
-                          {stage2Done ? <Check className="w-3.5 h-3.5" /> : null}
-                          {stage2Done ? 'Đã xong' : 'Chưa xong'}
-                        </button>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        Xưởng: {tenNcc || 'Chưa chọn'}
-                      </td>
-                    </tr>
-
-                    {/* Chặng 3 */}
-                    <tr className={stage3Done ? 'bg-emerald-50/30' : ''}>
-                      <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">3</span>
-                          <span>Vận chuyển QT</span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="date"
-                          value={ngayGuiHang}
-                          onChange={(e) => setNgayGuiHang(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
-                        />
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="date"
-                          value={ngayDenCang}
-                          onChange={(e) => setNgayDenCang(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
-                        />
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-indigo-700">
-                        {durStage3 !== null ? `${durStage3} ngày` : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setStage3Done(!stage3Done)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
-                            stage3Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                          }`}
-                        >
-                          {stage3Done ? <Check className="w-3.5 h-3.5" /> : null}
-                          {stage3Done ? 'Đã xong' : 'Chưa xong'}
-                        </button>
-                      </td>
-                      <td className="py-2 px-3">
+                        <span className="text-[11px] text-slate-500">ngày</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="date"
+                        value={ngayDenCang}
+                        onChange={(e) => handleEnd3Change(e.target.value)}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setStage3Done(!stage3Done)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
+                          stage3Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                        }`}
+                      >
+                        {stage3Done ? <Check className="w-3.5 h-3.5" /> : null}
+                        {stage3Done ? 'Đã xong' : 'Chưa xong'}
+                      </button>
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 text-[11px] whitespace-nowrap">Mã vận đơn:</span>
                         <input
                           type="text"
                           value={trackingVanChuyen}
                           onChange={(e) => setTrackingVanChuyen(e.target.value)}
-                          placeholder="Mã tracking / vận đơn..."
-                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
+                          placeholder="Mã tracking / Hãng tàu..."
+                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-blue-700"
                         />
-                      </td>
-                    </tr>
+                      </div>
+                    </td>
+                  </tr>
 
-                    {/* Chặng 4 */}
-                    <tr className={stage4Done ? 'bg-emerald-50/30' : ''}>
-                      <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-[10px]">4</span>
-                          <span>Hải quan & Cảng</span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3">
+                  {/* Chặng 4: Hải quan & Cảng */}
+                  <tr className={`hover:bg-slate-50/60 transition ${stage4Done ? 'bg-emerald-50/30' : ''}`}>
+                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-[10px] font-extrabold">4</span>
+                        <span>4. Hải quan & Cảng</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
+                        {formatDateVN(ngayDenCang)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 3)</span>
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      <div className="inline-flex items-center gap-1">
                         <input
-                          type="date"
-                          value={ngayMoToKhai}
-                          onChange={(e) => setNgayMoToKhai(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
+                          type="number"
+                          min="0"
+                          value={daysStage4}
+                          onChange={(e) => handleDays4Change(e.target.value)}
+                          className="w-14 px-1.5 py-1 text-center bg-white border border-cyan-200 rounded-lg text-xs font-bold text-cyan-700 focus:ring-1 focus:ring-cyan-500"
                         />
-                      </td>
-                      <td className="py-2 px-3">
+                        <span className="text-[11px] text-slate-500">ngày</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="date"
+                        value={ngayThongQuan}
+                        onChange={(e) => handleEnd4Change(e.target.value)}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-cyan-500"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setStage4Done(!stage4Done)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
+                          stage4Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                        }`}
+                      >
+                        {stage4Done ? <Check className="w-3.5 h-3.5" /> : null}
+                        {stage4Done ? 'Đã xong' : 'Chưa xong'}
+                      </button>
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 text-[11px] whitespace-nowrap">Cửa khẩu:</span>
                         <input
-                          type="date"
-                          value={ngayThongQuan}
-                          onChange={(e) => setNgayThongQuan(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
+                          type="text"
+                          value={thongTinHaiQuan}
+                          onChange={(e) => setThongTinHaiQuan(e.target.value)}
+                          placeholder="Cảng Cát Lái / Hữu Nghị..."
+                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
                         />
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-cyan-700">
-                        {durStage4 !== null ? `${durStage4} ngày` : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setStage4Done(!stage4Done)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
-                            stage4Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                          }`}
-                        >
-                          {stage4Done ? <Check className="w-3.5 h-3.5" /> : null}
-                          {stage4Done ? 'Đã xong' : 'Chưa xong'}
-                        </button>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        Cảng Cát Lái / Hữu Nghị
-                      </td>
-                    </tr>
+                      </div>
+                    </td>
+                  </tr>
 
-                    {/* Chặng 5 */}
-                    <tr className={stage5Done ? 'bg-emerald-50/30' : ''}>
-                      <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]">5</span>
-                          <span>Kho nhận & Bán</span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3">
+                  {/* Chặng 5: Kho Việt Nam nhận hàng */}
+                  <tr className={`hover:bg-slate-50/60 transition ${stage5Done ? 'bg-emerald-50/30' : ''}`}>
+                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-extrabold">5</span>
+                        <span>5. Kho VN nhận hàng</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
+                        {formatDateVN(ngayThongQuan)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 4)</span>
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      <div className="inline-flex items-center gap-1">
                         <input
-                          type="date"
-                          value={ngayKeoHangVeKho}
-                          onChange={(e) => setNgayKeoHangVeKho(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
+                          type="number"
+                          min="0"
+                          value={daysStage5}
+                          onChange={(e) => handleDays5Change(e.target.value)}
+                          className="w-14 px-1.5 py-1 text-center bg-white border border-emerald-200 rounded-lg text-xs font-bold text-emerald-700 focus:ring-1 focus:ring-emerald-500"
                         />
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="date"
-                          value={ngayKhoNhan}
-                          onChange={(e) => setNgayKhoNhan(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs"
-                        />
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
-                        {durStage5 !== null ? `${durStage5} ngày` : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setStage5Done(!stage5Done)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 mx-auto ${
-                            stage5Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                          }`}
-                        >
-                          {stage5Done ? <Check className="w-3.5 h-3.5" /> : null}
-                          {stage5Done ? 'Đã xong' : 'Chưa xong'}
-                        </button>
-                      </td>
-                      <td className="py-2 px-3">
+                        <span className="text-[11px] text-slate-500">ngày</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="date"
+                        value={ngayKhoNhan}
+                        onChange={(e) => handleEnd5Change(e.target.value)}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setStage5Done(!stage5Done)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
+                          stage5Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                        }`}
+                      >
+                        {stage5Done ? <Check className="w-3.5 h-3.5" /> : null}
+                        {stage5Done ? 'Đã xong' : 'Chưa xong'}
+                      </button>
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 text-[11px] whitespace-nowrap">SLG thực nhận:</span>
                         <input
                           type="number"
                           value={slgThucNhan}
                           onChange={(e) => setSlgThucNhan(e.target.value)}
                           placeholder="SLG thực tế nhập kho..."
-                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-emerald-700"
+                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-black text-emerald-700"
                         />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
+                      </div>
+                    </td>
+                  </tr>
 
-            {/* 2.2 VIEW DẠNG LỊCH / GANTT TIMELINE */}
-            {timelineViewMode === 'CALENDAR' && (
-              <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">
-                    Sơ đồ thanh thời gian 5 chặng quy trình
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    Bắt đầu: <strong>{formatDateVN(ngayDatHang) || 'Chưa có'}</strong> ➔ Hoàn tất: <strong>{formatDateVN(ngayKhoNhan) || 'Dự kiến'}</strong>
-                  </span>
+                  {/* Chặng 6: Kế hoạch phân phối & Mở bán hàng (Yêu cầu 2) */}
+                  <tr className={`hover:bg-slate-50/60 transition ${stage6Done ? 'bg-amber-50/50' : 'bg-amber-50/20'}`}>
+                    <td className="py-2.5 px-3 font-bold text-amber-900 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-[10px] font-extrabold">6</span>
+                        <span>6. Phân phối & Mở bán</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
+                        {formatDateVN(ngayKhoNhan)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 5)</span>
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      <div className="inline-flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          value={daysStage6}
+                          onChange={(e) => handleDays6Change(e.target.value)}
+                          title="Số ngày trữ kho trước khi mở bán (0 = Bán ngay)"
+                          className="w-14 px-1.5 py-1 text-center bg-white border border-amber-300 rounded-lg text-xs font-bold text-amber-800 focus:ring-1 focus:ring-amber-500"
+                        />
+                        <span className="text-[11px] text-slate-500">ngày</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="date"
+                        value={ngayKeHoachBan}
+                        onChange={(e) => handleEnd6Change(e.target.value)}
+                        className="px-2 py-1 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-900 focus:ring-1 focus:ring-amber-500"
+                        title="Ngày dự kiến mở bán hàng"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setStage6Done(!stage6Done)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
+                          stage6Done ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                        }`}
+                      >
+                        {stage6Done ? <Check className="w-3.5 h-3.5" /> : null}
+                        {stage6Done ? 'Đang bán' : 'Chưa bán'}
+                      </button>
+                    </td>
+                    <td className="py-2 px-3">
+                      <select
+                        value={keHoachBanType}
+                        onChange={(e) => handlePlanTypeChange(e.target.value)}
+                        className="w-full px-2 py-1 bg-white border border-amber-300 rounded-lg text-xs font-bold text-amber-800 outline-none"
+                      >
+                        <option value="Bán ngay">⚡ Bán ngay (Bán ngay khi về kho)</option>
+                        <option value="Bán sau (Trữ kho)">📦 Bán sau (Trữ kho / Theo chiến dịch)</option>
+                      </select>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* 3.2 DẠNG LỊCH TIMELINE GANTT TRỰC QUAN */}
+          {timelineViewMode === 'CALENDAR' && (
+            <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-2xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span className="text-xs font-bold text-slate-800">
+                  Sơ đồ thanh thời gian tiến độ chuỗi cung ứng (Gantt waterfall)
+                </span>
+                <span className="text-xs text-slate-500">
+                  Khởi động: <strong>{formatDateVN(ngayDatHang) || 'Chưa có'}</strong> ➔ Mở bán: <strong>{formatDateVN(ngayKeHoachBan) || 'Dự kiến'}</strong>
+                </span>
+              </div>
+
+              <div className="space-y-3 pt-1">
+                {/* Thanh 1 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-slate-700">1. Đặt hàng & Cọc</span>
+                    <span className="text-slate-500">{daysStage1} ngày ({formatDateVN(ngayDatHang)} ➔ {formatDateVN(ngayCocXong)})</span>
+                  </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-300 ${stage1Done ? 'bg-emerald-500 w-full' : 'bg-blue-400 w-3/4'}`} />
+                  </div>
                 </div>
 
-                <div className="space-y-3 pt-2">
-                  {/* Thanh 1 */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-semibold text-slate-700">1. Đặt hàng & Cọc</span>
-                      <span className="text-slate-500">{durStage1 || 1} ngày ({formatDateVN(ngayDatHang)})</span>
-                    </div>
-                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all duration-300 ${stage1Done ? 'bg-emerald-500 w-full' : 'bg-blue-400 w-3/4'}`} />
-                    </div>
+                {/* Thanh 2 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-slate-700">2. Sản xuất hàng loạt</span>
+                    <span className="text-slate-500">{daysStage2} ngày ({formatDateVN(ngayCocXong)} ➔ {formatDateVN(ngaySxXong)})</span>
                   </div>
-
-                  {/* Thanh 2 */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-semibold text-slate-700">2. Sản xuất xưởng</span>
-                      <span className="text-slate-500">{durStage2 ? `${durStage2} ngày` : 'Chưa ấn định'} {ngaySxXong ? `(Xong: ${formatDateVN(ngaySxXong)})` : ''}</span>
-                    </div>
-                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all duration-300 ${stage2Done ? 'bg-emerald-500 w-full' : ngaySxXong ? 'bg-purple-500 w-2/3' : 'bg-slate-200 w-1/4'}`} />
-                    </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-300 ${stage2Done ? 'bg-emerald-500 w-full' : ngaySxXong ? 'bg-purple-500 w-2/3' : 'bg-slate-200 w-1/4'}`} />
                   </div>
+                </div>
 
-                  {/* Thanh 3 */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-semibold text-slate-700">3. Vận chuyển quốc tế</span>
-                      <span className="text-slate-500">{durStage3 ? `${durStage3} ngày` : 'Chưa ấn định'} {trackingVanChuyen ? `(Vận đơn: ${trackingVanChuyen})` : ''}</span>
-                    </div>
-                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all duration-300 ${stage3Done ? 'bg-emerald-500 w-full' : ngayGuiHang ? 'bg-indigo-500 w-1/2' : 'bg-slate-200 w-0'}`} />
-                    </div>
+                {/* Thanh 3 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-slate-700">3. Vận chuyển quốc tế</span>
+                    <span className="text-slate-500">{daysStage3} ngày ({formatDateVN(ngaySxXong)} ➔ {formatDateVN(ngayDenCang)}) {trackingVanChuyen ? `• VĐ: ${trackingVanChuyen}` : ''}</span>
                   </div>
-
-                  {/* Thanh 4 */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-semibold text-slate-700">4. Hải quan & Thông quan</span>
-                      <span className="text-slate-500">{durStage4 ? `${durStage4} ngày` : 'Chưa ấn định'} {ngayThongQuan ? `(Xong: ${formatDateVN(ngayThongQuan)})` : ''}</span>
-                    </div>
-                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all duration-300 ${stage4Done ? 'bg-emerald-500 w-full' : ngayThongQuan ? 'bg-cyan-500 w-1/2' : 'bg-slate-200 w-0'}`} />
-                    </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-300 ${stage3Done ? 'bg-emerald-500 w-full' : trackingVanChuyen ? 'bg-indigo-500 w-1/2' : 'bg-slate-200 w-0'}`} />
                   </div>
+                </div>
 
-                  {/* Thanh 5 */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-semibold text-slate-700">5. Kho Việt Nam nhận hàng & Bán</span>
-                      <span className="text-slate-500">{ngayKhoNhan ? `Về kho: ${formatDateVN(ngayKhoNhan)}` : 'Chờ về kho'} {slgThucNhan ? `(${formatNumber(slgThucNhan)} cái)` : ''}</span>
-                    </div>
-                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all duration-300 ${stage5Done ? 'bg-emerald-500 w-full' : ngayKhoNhan ? 'bg-emerald-400 w-3/4' : 'bg-slate-200 w-0'}`} />
-                    </div>
+                {/* Thanh 4 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-slate-700">4. Hải quan & Cảng thông quan</span>
+                    <span className="text-slate-500">{daysStage4} ngày ({formatDateVN(ngayDenCang)} ➔ {formatDateVN(ngayThongQuan)})</span>
+                  </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-300 ${stage4Done ? 'bg-emerald-500 w-full' : ngayThongQuan ? 'bg-cyan-500 w-1/2' : 'bg-slate-200 w-0'}`} />
+                  </div>
+                </div>
+
+                {/* Thanh 5 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-slate-700">5. Kho Việt Nam nhận hàng</span>
+                    <span className="text-slate-500">{daysStage5} ngày ({formatDateVN(ngayThongQuan)} ➔ {formatDateVN(ngayKhoNhan)}) {slgThucNhan ? `• ${formatNumber(slgThucNhan)} cái` : ''}</span>
+                  </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-300 ${stage5Done ? 'bg-emerald-500 w-full' : ngayKhoNhan ? 'bg-emerald-400 w-3/4' : 'bg-slate-200 w-0'}`} />
+                  </div>
+                </div>
+
+                {/* Thanh 6 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-amber-900">6. Phân phối & Mở bán ({keHoachBanType})</span>
+                    <span className="text-amber-700 font-semibold">{daysStage6} ngày lưu kho • Mở bán: {formatDateVN(ngayKeHoachBan)}</span>
+                  </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-300 ${stage6Done ? 'bg-amber-500 w-full' : 'bg-amber-300 w-1/2'}`} />
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
-        {/* Buttons lưu */}
-        <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+        {/* ============================================================ */}
+        {/* PHẦN 4: GHI CHÚ ĐƠN HÀNG                                     */}
+        {/* ============================================================ */}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">
+            Ghi chú chung về đơn hàng PO
+          </label>
+          <textarea
+            rows={2}
+            value={ghiChu}
+            onChange={(e) => setGhiChu(e.target.value)}
+            placeholder="Yêu cầu đóng gói thùng carton, tem phụ tiếng Việt, hướng dẫn sử dụng, bảo hành..."
+            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none"
+          />
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex items-center justify-between pt-3 border-t border-slate-200">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1156,35 +1447,14 @@ export function XnkDonHangDrawer({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            {activeTab === 'TIMELINE' ? (
-              <button
-                type="button"
-                onClick={() => setActiveTab('INFO')}
-                className="px-3.5 py-2 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 transition cursor-pointer"
-              >
-                Quay lại Tab 1
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setActiveTab('TIMELINE')}
-                className="px-3.5 py-2 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-xl hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1"
-              >
-                <span>Xem Lịch trình 5 chặng</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="px-5 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 shadow-sm transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Đang lưu...' : 'Lưu Đơn Hàng PO'}</span>
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="px-6 py-2.5 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 shadow-md transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <Save className="w-4 h-4" />
+            <span>{isSaving ? 'Đang lưu...' : 'Lưu Đơn Hàng PO'}</span>
+          </button>
         </div>
       </form>
     </Drawer>
