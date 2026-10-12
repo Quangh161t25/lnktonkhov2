@@ -710,6 +710,9 @@ export function XnkDonHangModule({ onNavigate }) {
           setTrackingOrder(po);
           setIsTrackingModalOpen(true);
         }}
+        onOpenEditYtuong={() => onNavigate && onNavigate('xnk_ytuong')}
+        onOpenEditMau={() => onNavigate && onNavigate('xnk_mau')}
+        onNavigate={onNavigate}
       />
     </div>
   );

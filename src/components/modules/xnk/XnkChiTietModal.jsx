@@ -211,19 +211,177 @@ export function XnkChiTietModal({
     });
   }, [item, selectedPo, relatedSamples, usersData]);
 
+  // Danh sách các Tab theo yêu cầu cụ thể của từng Module:
+  // 1. Ý tưởng: Chi tiết ý tưởng -> tab đơn mẫu thử nếu có -> tab đơn hàng nếu có -> tiến độ nếu có (k có ncc)
+  // 2. Đơn mẫu: Ý tưởng bên trái nếu có -> Chi tiết mẫu thử -> Đơn PO nếu có -> Tiến độ nếu có (k có ncc)
+  // 3. Đơn PO: Ý tưởng bên trái nếu có -> Đơn mẫu bên trái nếu có -> Đơn PO -> Tiến độ bên phải (k có ncc)
+  // 4. NCC: Nhà cung cấp riêng
+  const availableTabs = useMemo(() => {
+    const tabs = [];
+
+    if (type === 'ytuong') {
+      // 1. Ý tưởng chi tiết sẽ hiện ra chi tiết của ý tưởng
+      tabs.push({
+        id: 'YTUONG',
+        label: 'Ý tưởng sản phẩm',
+        icon: Lightbulb,
+        color: 'amber'
+      });
+
+      // Bên cạnh là tab đơn mẫu thử nếu có
+      if (relatedSamples.length > 0) {
+        tabs.push({
+          id: 'MAU',
+          label: 'Đơn mẫu thử',
+          icon: Package,
+          color: 'purple',
+          count: relatedSamples.length
+        });
+      }
+
+      // tab đơn hàng nếu có
+      if (relatedOrders.length > 0) {
+        tabs.push({
+          id: 'DONHANG',
+          label: 'Đơn hàng PO',
+          icon: ShoppingCart,
+          color: 'blue',
+          count: relatedOrders.length
+        });
+      }
+
+      // và tiến độ nếu có
+      if (relatedOrders.length > 0 && selectedPo) {
+        tabs.push({
+          id: 'TIENDO',
+          label: 'Tiến độ 6 chặng',
+          icon: Clock,
+          color: 'indigo'
+        });
+      }
+
+      // k có ncc nhé . ncc riêng
+    } else if (type === 'mau') {
+      // 2. Đơn mẫu: chi tiết sẽ có ý tưởng bên trái (nếu có)
+      if (currentIdea) {
+        tabs.push({
+          id: 'YTUONG',
+          label: 'Ý tưởng gốc',
+          icon: Lightbulb,
+          color: 'amber'
+        });
+      }
+
+      // Chi tiết mẫu thử (tab chính của mẫu hiện tại)
+      tabs.push({
+        id: 'MAU',
+        label: 'Chi tiết mẫu thử',
+        icon: Package,
+        color: 'purple',
+        count: relatedSamples.length
+      });
+
+      // Đơn PO nếu có
+      if (relatedOrders.length > 0) {
+        tabs.push({
+          id: 'DONHANG',
+          label: 'Đơn hàng PO',
+          icon: ShoppingCart,
+          color: 'blue',
+          count: relatedOrders.length
+        });
+      }
+
+      // và tiến độ nếu có
+      if (relatedOrders.length > 0 && selectedPo) {
+        tabs.push({
+          id: 'TIENDO',
+          label: 'Tiến độ 6 chặng',
+          icon: Clock,
+          color: 'indigo'
+        });
+      }
+
+      // k có ncc!
+    } else if (type === 'donhang' || type === 'tiendo') {
+      // 3. Đơn PO: xem bên trái có ý tưởng hay đơn mẫu không. k có thì k cần hiện.
+      if (currentIdea) {
+        tabs.push({
+          id: 'YTUONG',
+          label: 'Ý tưởng gốc',
+          icon: Lightbulb,
+          color: 'amber'
+        });
+      }
+
+      if (relatedSamples.length > 0) {
+        tabs.push({
+          id: 'MAU',
+          label: 'Đơn mẫu thử',
+          icon: Package,
+          color: 'purple',
+          count: relatedSamples.length
+        });
+      }
+
+      // Tab chính: Đơn PO
+      tabs.push({
+        id: 'DONHANG',
+        label: 'Đơn hàng PO',
+        icon: ShoppingCart,
+        color: 'blue',
+        count: relatedOrders.length
+      });
+
+      // Bên phải là tiến độ
+      tabs.push({
+        id: 'TIENDO',
+        label: 'Tiến độ 6 chặng',
+        icon: Clock,
+        color: 'indigo'
+      });
+
+      // k có ncc!
+    } else if (type === 'ncc') {
+      // 4. NCC riêng:
+      tabs.push({
+        id: 'NCC',
+        label: 'Nhà cung cấp / Xưởng',
+        icon: Building2,
+        color: 'emerald'
+      });
+
+      if (relatedSamples.length > 0) {
+        tabs.push({
+          id: 'MAU',
+          label: 'Mẫu thử đã làm',
+          icon: Package,
+          color: 'purple',
+          count: relatedSamples.length
+        });
+      }
+
+      if (relatedOrders.length > 0) {
+        tabs.push({
+          id: 'DONHANG',
+          label: 'Đơn PO đã giao',
+          icon: ShoppingCart,
+          color: 'blue',
+          count: relatedOrders.length
+        });
+      }
+    }
+
+    return tabs;
+  }, [type, currentIdea, relatedSamples.length, relatedOrders.length, selectedPo]);
+
   // Thiết lập Tab khởi tạo khi mở Modal
   useEffect(() => {
     if (!isOpen) return;
     setSelectedPoIndex(0);
 
     if (type === 'ytuong') {
-      // Khi click vào ý tưởng: nếu đã có đơn hàng PO thì ưu tiên hiển thị đơn hàng (theo yêu cầu của bạn)
-      // hoặc nếu chưa có PO thì mở tab Ý tưởng
-      if (relatedOrders.length > 0) {
-        setActiveTab('DONHANG');
-      } else {
-        setActiveTab('YTUONG');
-      }
+      setActiveTab('YTUONG');
     } else if (type === 'mau') {
       setActiveTab('MAU');
     } else if (type === 'donhang') {
@@ -235,12 +393,37 @@ export function XnkChiTietModal({
     } else {
       setActiveTab('YTUONG');
     }
-  }, [isOpen, type, relatedOrders.length]);
+  }, [isOpen, type, item]);
+
+  // Luôn đảm bảo activeTab nằm trong danh sách các tab hiển thị
+  useEffect(() => {
+    if (availableTabs.length > 0 && !availableTabs.some(t => t.id === activeTab)) {
+      setActiveTab(availableTabs[0].id);
+    }
+  }, [availableTabs, activeTab]);
 
   if (!isOpen || !item) return null;
 
   // Title name
-  const displayTitle = item.ten_sp || item.ma_po || item.name || item.id_mau || item.id_y_tuong || 'Chi tiết nghiệp vụ';
+  const displayTitle = useMemo(() => {
+    if (!item) return 'Chi tiết nghiệp vụ';
+    if (type === 'ytuong') {
+      return item.ten_sp || item.id_y_tuong || 'Ý tưởng sản phẩm';
+    }
+    if (type === 'mau') {
+      const parts = [item.id_mau || 'Mẫu thử'];
+      if (item.ten_ncc) parts.push(item.ten_ncc);
+      if (currentIdea?.ten_sp) parts.push(`(${currentIdea.ten_sp})`);
+      return parts.join(' - ');
+    }
+    if (type === 'donhang' || type === 'tiendo') {
+      return `${item.ma_po || 'Đơn PO'}${item.ten_sp ? ' - ' + item.ten_sp : ''}`;
+    }
+    if (type === 'ncc') {
+      return item.ho_ten || item.name || item.ten_ncc || 'Nhà cung cấp';
+    }
+    return item.ten_sp || item.ma_po || item.name || item.id_mau || item.id_y_tuong || 'Chi tiết nghiệp vụ';
+  }, [item, type, currentIdea]);
 
   let resolvedWidthClass = 'w-full max-w-4xl';
   if (drawerSize === 'small') {
@@ -349,97 +532,55 @@ export function XnkChiTietModal({
           </div>
         </div>
 
-        {/* 2. CÁC TAB ĐIỀU HƯỚNG PHÍA TRÊN (TOP TABS) */}
+        {/* 2. CÁC TAB ĐIỀU HƯỚNG PHÍA TRÊN (DYNAMIC TABS THEO QUY ĐỊNH MODUL) */}
         <div className="flex items-center gap-1.5 overflow-x-auto px-5 sm:px-6 py-2.5 border-b border-slate-200 shrink-0 select-none bg-slate-50/50">
-          {/* Tab 1: Đơn hàng PO */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('DONHANG')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTab === 'DONHANG'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <ShoppingCart className="w-4 h-4" />
-            <span>Đơn hàng PO</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-              activeTab === 'DONHANG' ? 'bg-blue-700 text-white' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {relatedOrders.length}
-            </span>
-          </button>
+          {availableTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            let activeColorClass = 'bg-blue-600 text-white shadow-xs';
+            let badgeBgClass = 'bg-white/20 text-white';
+            if (tab.id === 'YTUONG') {
+              activeColorClass = 'bg-amber-600 text-white shadow-xs';
+            } else if (tab.id === 'MAU') {
+              activeColorClass = 'bg-purple-600 text-white shadow-xs';
+            } else if (tab.id === 'DONHANG') {
+              activeColorClass = 'bg-blue-600 text-white shadow-xs';
+            } else if (tab.id === 'TIENDO') {
+              activeColorClass = 'bg-indigo-600 text-white shadow-xs';
+            } else if (tab.id === 'NCC') {
+              activeColorClass = 'bg-emerald-600 text-white shadow-xs';
+            }
 
-          {/* Tab 2: Ý tưởng sản phẩm */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('YTUONG')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTab === 'YTUONG'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Lightbulb className="w-4 h-4" />
-            <span>Ý tưởng sản phẩm</span>
-            {currentIdea && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
-          </button>
-
-          {/* Tab 3: Mẫu thử & Đánh giá */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('MAU')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTab === 'MAU'
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Package className="w-4 h-4" />
-            <span>Mẫu thử & Đánh giá</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-              activeTab === 'MAU' ? 'bg-purple-700 text-white' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {relatedSamples.length}
-            </span>
-          </button>
-
-          {/* Tab 4: Tiến độ 6 chặng */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('TIENDO')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTab === 'TIENDO'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            <span>Tiến độ 6 chặng</span>
-            {selectedPo && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                activeTab === 'TIENDO' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
-              }`}>
-                {selectedPo.tinh_trang_cuoi || 'Đang chạy'}
-              </span>
-            )}
-          </button>
-
-          {/* Tab 5: Nhà cung cấp */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('NCC')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTab === 'NCC'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Nhà cung cấp / Xưởng</span>
-          </button>
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  isActive
+                    ? activeColorClass
+                    : 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+                {tab.count !== undefined && (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                    isActive ? badgeBgClass : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+                {tab.id === 'TIENDO' && selectedPo && (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    isActive ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {selectedPo.tinh_trang_cuoi || 'Đang chạy'}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* 3. NỘI DUNG TỪNG TAB (SCROLLABLE BODY) */}
@@ -527,6 +668,38 @@ export function XnkChiTietModal({
                           <span className="text-xs font-bold text-amber-700">{formatCurrency(po.tien_coc)}</span>
                         </div>
                       </div>
+
+                      {/* Các mốc thời gian quy trình */}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 block font-semibold">Ngày đặt:</span>
+                          <span className="font-bold text-slate-700">{formatDateVN(po.ngay_dat_hang) || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block font-semibold">SX xong:</span>
+                          <span className="font-bold text-slate-700">{formatDateVN(po.ngay_sx_xong) || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block font-semibold">Gửi hàng:</span>
+                          <span className="font-bold text-slate-700">{formatDateVN(po.ngay_gui_hang) || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block font-semibold">Thông quan:</span>
+                          <span className="font-bold text-slate-700">{formatDateVN(po.ngay_thong_quan) || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block font-semibold">Kho nhận:</span>
+                          <span className="font-bold text-slate-700">{formatDateVN(po.ngay_kho_nhan) || '-'}</span>
+                        </div>
+                      </div>
+
+                      {/* Ghi chú đơn nếu có */}
+                      {po.ghi_chu && (
+                        <div className="p-2.5 bg-blue-50/40 rounded-xl border border-blue-100 text-[11px]">
+                          <span className="font-bold text-blue-900 block mb-0.5">Ghi chú đơn hàng:</span>
+                          <p className="text-slate-700 whitespace-pre-line">{po.ghi_chu}</p>
+                        </div>
+                      )}
 
                       {/* Nhà cung cấp & Tiến độ */}
                       <div className="flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
@@ -848,6 +1021,27 @@ export function XnkChiTietModal({
                     </div>
                   </div>
 
+                  {/* Selector chuyển đổi PO nếu có nhiều hơn 1 đơn PO */}
+                  {relatedOrders.length > 1 && (
+                    <div className="flex items-center gap-1.5 p-2 bg-indigo-50/40 rounded-xl overflow-x-auto border border-indigo-100">
+                      <span className="text-indigo-900 font-bold text-[11px] whitespace-nowrap pl-1">Chọn đơn PO:</span>
+                      {relatedOrders.map((o, idx) => (
+                        <button
+                          key={o.ma_po || idx}
+                          type="button"
+                          onClick={() => setSelectedPoIndex(idx)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                            selectedPoIndex === idx
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          {o.ma_po} {o.ten_sp ? `(${o.ten_sp})` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Sơ đồ 6 chặng */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     {/* Chặng 1 */}
@@ -1001,7 +1195,7 @@ export function XnkChiTietModal({
           </button>
 
           <div className="flex items-center gap-2">
-            {type === 'ytuong' && onOpenEditYtuong && currentIdea && (
+            {(activeTab === 'YTUONG' || (!['MAU', 'DONHANG', 'TIENDO'].includes(activeTab) && type === 'ytuong')) && onOpenEditYtuong && currentIdea && (
               <button
                 type="button"
                 onClick={() => {
@@ -1015,12 +1209,12 @@ export function XnkChiTietModal({
               </button>
             )}
 
-            {type === 'mau' && onOpenEditMau && (
+            {(activeTab === 'MAU' || (!['YTUONG', 'DONHANG', 'TIENDO'].includes(activeTab) && type === 'mau')) && onOpenEditMau && (relatedSamples.length > 0 || item) && (
               <button
                 type="button"
                 onClick={() => {
                   onClose();
-                  onOpenEditMau(item);
+                  onOpenEditMau(relatedSamples[0] || item);
                 }}
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
@@ -1029,17 +1223,31 @@ export function XnkChiTietModal({
               </button>
             )}
 
-            {type === 'donhang' && onOpenEditPo && (
+            {(activeTab === 'DONHANG' || (!['YTUONG', 'MAU', 'TIENDO'].includes(activeTab) && (type === 'donhang' || type === 'tiendo'))) && onOpenEditPo && (selectedPo || item) && (
               <button
                 type="button"
                 onClick={() => {
                   onClose();
-                  onOpenEditPo(item);
+                  onOpenEditPo(selectedPo || item);
                 }}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span>Chỉnh sửa đơn PO</span>
+              </button>
+            )}
+
+            {activeTab === 'TIENDO' && onOpenEditTracking && (selectedPo || item) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenEditTracking(selectedPo || item);
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Cập nhật tiến độ</span>
               </button>
             )}
           </div>

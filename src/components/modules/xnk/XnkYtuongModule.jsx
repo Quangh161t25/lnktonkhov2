@@ -615,8 +615,12 @@ export function XnkYtuongModule({ onNavigate }) {
           setSelectedItem(it);
           setIsDrawerOpen(true);
         }}
-        onOpenCreateMau={() => onNavigate('xnk_mau')}
-        onOpenCreatePo={() => onNavigate('xnk_donhang')}
+        onOpenEditMau={() => onNavigate && onNavigate('xnk_mau')}
+        onOpenEditPo={() => onNavigate && onNavigate('xnk_donhang')}
+        onOpenEditTracking={() => onNavigate && onNavigate('xnk_donhang')}
+        onOpenCreateMau={() => onNavigate && onNavigate('xnk_mau')}
+        onOpenCreatePo={() => onNavigate && onNavigate('xnk_donhang')}
+        onNavigate={onNavigate}
       />
     </div>
   );
