@@ -446,7 +446,7 @@ export function XuatModule() {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 flex-1 flex flex-col min-h-full">
       {/* Top Controls */}
       <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-sm space-y-2">
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
@@ -672,8 +672,8 @@ export function XuatModule() {
       </div>
 
       {/* Main Table: Dynamic columns based on visibleColumns */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto max-h-[calc(100vh-210px)] overflow-y-auto">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col justify-between min-h-[calc(100vh-280px)]">
+        <div className="overflow-x-auto flex-1 overflow-y-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
               <tr>

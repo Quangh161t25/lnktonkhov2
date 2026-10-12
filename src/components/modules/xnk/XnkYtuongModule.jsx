@@ -9,10 +9,12 @@ import { Pagination } from '../../common/Pagination';
 import { exportToExcel } from '../../../services/excelService';
 import { 
   formatDateVN, 
-  matchesSearch 
+  matchesSearch,
+  parseSimpleSheetDate 
 } from '../../../utils/formatters';
 import { 
   ArrowLeft, 
+  ArrowUpDown,
   Search, 
   Filter, 
   Plus, 
@@ -74,6 +76,7 @@ export function XnkYtuongModule({ onNavigate }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [authorFilter, setAuthorFilter] = useState('ALL');
+  const [sortDateOrder, setSortDateOrder] = useState('desc'); // 'desc' | 'asc'
 
   // Selected checkbox rows
   const [selectedIds, setSelectedIds] = useState([]);
@@ -138,8 +141,12 @@ export function XnkYtuongModule({ onNavigate }) {
         if (!match) return false;
       }
       return true;
+    }).sort((a, b) => {
+      const timeA = parseSimpleSheetDate(a.ngay_tao).getTime() || 0;
+      const timeB = parseSimpleSheetDate(b.ngay_tao).getTime() || 0;
+      return sortDateOrder === 'asc' ? timeA - timeB : timeB - timeA;
     });
-  }, [ytuongList, statusFilter, authorFilter, searchTerm]);
+  }, [ytuongList, statusFilter, authorFilter, searchTerm, sortDateOrder]);
 
   // Paginated
   const paginatedList = useMemo(() => {
@@ -180,7 +187,7 @@ export function XnkYtuongModule({ onNavigate }) {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 flex-1 flex flex-col min-h-full">
       {/* 1. Sub-Tabs Header (matching Screenshot 2: [Danh sách] vs [Thống kê]) */}
       <div className="flex items-center justify-between border-b border-slate-200 pb-2">
         <div className="flex items-center gap-1">
@@ -263,6 +270,21 @@ export function XnkYtuongModule({ onNavigate }) {
               <option key={author} value={author}>{author}</option>
             ))}
           </select>
+
+          {/* Nút đổi sắp xếp theo Ngày */}
+          <button
+            type="button"
+            onClick={() => setSortDateOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+              sortDateOrder === 'desc'
+                ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
+                : 'bg-amber-50 text-amber-700 border-amber-200 shadow-2xs'
+            }`}
+            title="Nhấp để đổi thứ tự sắp xếp theo ngày (Lớn ➔ Nhỏ hoặc Nhỏ ➔ Lớn)"
+          >
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            <span>Ngày: {sortDateOrder === 'desc' ? 'Mới ➔ Cũ' : 'Cũ ➔ Mới'}</span>
+          </button>
         </div>
 
         {/* Right Actions */}
@@ -335,10 +357,10 @@ export function XnkYtuongModule({ onNavigate }) {
         </div>
       ) : (
         /* 4. Data Table (matching Screenshot 2: Checkbox, Badge ID, Clean columns) */
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex-1 flex flex-col justify-between min-h-[calc(100vh-280px)]">
+          <div className="overflow-x-auto overflow-y-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-50/90 shadow-2xs">
                 <tr className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200 select-none">
                   {visibleColumns.map((col) => {
                     const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
@@ -353,6 +375,23 @@ export function XnkYtuongModule({ onNavigate }) {
                             onChange={handleSelectAll}
                             className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
                           />
+                        </th>
+                      );
+                    }
+
+                    if (col.key === 'ngay_tao') {
+                      return (
+                        <th
+                          key={col.key}
+                          style={widthStyle}
+                          onClick={() => setSortDateOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                          className={`py-2.5 px-3 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition select-none ${alignClass}`}
+                          title="Nhấp để đổi thứ tự sắp xếp theo ngày"
+                        >
+                          <div className="flex items-center gap-1 text-slate-800">
+                            <span>{col.label}</span>
+                            <ArrowUpDown className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
                         </th>
                       );
                     }
@@ -533,7 +572,7 @@ export function XnkYtuongModule({ onNavigate }) {
           </div>
 
           {/* 5. Pagination */}
-          <div className="p-3 border-t border-slate-100">
+          <div className="p-3 border-t border-slate-100 bg-white mt-auto shrink-0">
             <Pagination
               currentPage={currentPage}
               totalItems={filteredList.length}

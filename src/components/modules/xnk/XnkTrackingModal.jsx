@@ -15,7 +15,10 @@ import {
   RotateCw, 
   Sparkles, 
   CalendarRange,
-  TrendingUp
+  TrendingUp,
+  Minimize2,
+  Square,
+  Maximize2
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { 
@@ -93,6 +96,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
   const { updateRow, logAuditAction, fetchModule, xnkDonHangData } = useData();
 
   const [activeView, setActiveView] = useState('TABLE'); // 'TABLE' | 'STEPPER'
+  const [trackingSize, setTrackingSize] = useState('medium'); // 'small' | 'medium' | 'full'
 
   // Editable 6-stage states
   // Chặng 1
@@ -584,14 +588,24 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
     }
   };
 
+  let resolvedWidthClass = 'max-w-4xl';
+  let resolvedHeightClass = 'max-h-[92vh]';
+  if (trackingSize === 'small') {
+    resolvedWidthClass = 'max-w-xl';
+    resolvedHeightClass = 'max-h-[85vh]';
+  } else if (trackingSize === 'full') {
+    resolvedWidthClass = 'max-w-[96vw] w-[96vw]';
+    resolvedHeightClass = 'h-[95vh] max-h-[95vh]';
+  }
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4">
       <div 
         className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" 
         onClick={onClose} 
       />
 
-      <div className="relative bg-white rounded-3xl shadow-2xl max-w-4xl w-full p-6 overflow-hidden z-10 border border-slate-100 max-h-[92vh] flex flex-col">
+      <div className={`relative bg-white rounded-3xl shadow-2xl ${resolvedWidthClass} ${resolvedHeightClass} w-full p-5 sm:p-6 overflow-hidden z-10 border border-slate-100 flex flex-col transition-all duration-300`}>
         {/* Header */}
         <div className="flex items-start justify-between pb-3 border-b border-slate-100 shrink-0">
           <div>
@@ -614,12 +628,61 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
               SKU: <strong className="text-slate-700">{order.sku}</strong> • NCC: <strong className="text-slate-700">{order.ten_ncc || 'Chưa rõ'}</strong> • Đặt: <strong className="text-blue-700">{formatNumber(order.so_luong)} cái</strong> • Tổng: <strong className="text-emerald-700">{formatCurrency(order.tong_tien)}</strong>
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* 3 Size Control Buttons: Nhỏ lại - Vừa - Mở rộng */}
+            <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl border border-slate-200 shadow-2xs mr-1">
+              <button
+                type="button"
+                onClick={() => setTrackingSize('small')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+                  trackingSize === 'small'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Nhỏ lại (Giao diện nhỏ gọn)"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Nhỏ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTrackingSize('medium')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+                  trackingSize === 'medium'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Vừa (Kích thước tiêu chuẩn)"
+              >
+                <Square className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Vừa</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTrackingSize('full')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+                  trackingSize === 'full'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Mở rộng (Toàn màn hình)"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Mở rộng</span>
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition cursor-pointer"
+              title="Đóng / Hủy"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* View Switcher: Bảng vs Stepper */}

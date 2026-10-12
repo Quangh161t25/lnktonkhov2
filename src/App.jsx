@@ -154,7 +154,7 @@ export function App() {
         />
 
         {/* Dynamic View Scroll Area - Tight & Seamless Padding */}
-        <main className="flex-1 overflow-y-auto p-2 sm:p-3 pb-16 md:pb-3">
+        <main className="flex-1 overflow-y-auto p-2 sm:p-3 pb-16 md:pb-3 flex flex-col">
           <ErrorBoundary>
             {activeModule === 'home' && (
               <HomeModule onNavigate={(mod) => navigateToModule(mod)} />

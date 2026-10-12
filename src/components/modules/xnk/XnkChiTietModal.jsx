@@ -28,7 +28,10 @@ import {
   Check,
   Sparkles,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Minimize2,
+  Square,
+  Maximize2
 } from 'lucide-react';
 
 export function XnkChiTietModal({
@@ -53,6 +56,7 @@ export function XnkChiTietModal({
   // Active Tab inside Detail Modal
   const [activeTab, setActiveTab] = useState('YTUONG'); // 'YTUONG' | 'MAU' | 'DONHANG' | 'TIENDO' | 'NCC'
   const [selectedPoIndex, setSelectedPoIndex] = useState(0);
+  const [drawerSize, setDrawerSize] = useState('medium'); // 'small' | 'medium' | 'full'
 
   // 1. Parsed Ý tưởng
   const allIdeas = useMemo(() => {
@@ -238,72 +242,115 @@ export function XnkChiTietModal({
   // Title name
   const displayTitle = item.ten_sp || item.ma_po || item.name || item.id_mau || item.id_y_tuong || 'Chi tiết nghiệp vụ';
 
+  let resolvedWidthClass = 'w-full max-w-4xl';
+  if (drawerSize === 'small') {
+    resolvedWidthClass = 'w-full max-w-xl';
+  } else if (drawerSize === 'full') {
+    resolvedWidthClass = 'w-full max-w-[96vw]';
+  }
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" 
+        className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity duration-300" 
         onClick={onClose} 
       />
 
-      {/* Modal Dialog */}
-      <div className="relative bg-white rounded-3xl shadow-2xl max-w-5xl w-full p-5 sm:p-6 overflow-hidden z-10 border border-slate-100 max-h-[92vh] flex flex-col">
-        {/* 1. Header Modal */}
-        <div className="flex items-start justify-between pb-3.5 border-b border-slate-100 shrink-0">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider ${
-                type === 'ytuong'
-                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                  : type === 'mau'
-                  ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                  : type === 'donhang' || type === 'tiendo'
-                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                  : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-              }`}>
-                {type === 'ytuong' ? '💡 Ý tưởng sản phẩm' :
-                 type === 'mau' ? '📦 Mẫu thử & Đánh giá' :
-                 type === 'donhang' ? '🛒 Đơn hàng PO' :
-                 type === 'tiendo' ? '⏱️ Tiến độ chuỗi cung ứng' : '🏢 Nhà cung cấp'}
-              </span>
+      {/* Drawer Panel */}
+      <div 
+        className={`relative ${resolvedWidthClass} bg-white shadow-2xl z-10 flex flex-col h-full transform transition-all duration-300 ease-in-out`}
+      >
+        {/* 1. Header Drawer */}
+        <div className="h-16 px-5 sm:px-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/80">
+          <div className="flex items-center gap-2.5 min-w-0 pr-3">
+            <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider shrink-0 ${
+              type === 'ytuong'
+                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                : type === 'mau'
+                ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                : type === 'donhang' || type === 'tiendo'
+                ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+            }`}>
+              {type === 'ytuong' ? '💡 Ý tưởng' :
+               type === 'mau' ? '📦 Mẫu thử' :
+               type === 'donhang' ? '🛒 Đơn PO' :
+               type === 'tiendo' ? '⏱️ Tiến độ' : '🏢 NCC'}
+            </span>
 
-              {item.id_y_tuong && (
-                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-bold">
-                  {item.id_y_tuong}
-                </span>
-              )}
-              {item.ma_po && (
-                <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-bold">
-                  {item.ma_po}
-                </span>
-              )}
-              {item.id_mau && (
-                <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-xs font-bold">
-                  {item.id_mau}
-                </span>
-              )}
+            <div className="truncate">
+              <h3 className="font-bold text-slate-900 text-sm sm:text-base truncate flex items-center gap-2">
+                <span>{displayTitle}</span>
+                {(item.sku || item.sku_du_kien) && (
+                  <span className="text-[11px] px-2 py-0.5 bg-slate-200 text-slate-700 rounded-md font-bold">
+                    SKU: {item.sku || item.sku_du_kien}
+                  </span>
+                )}
+              </h3>
             </div>
-
-            <h3 className="text-lg sm:text-xl font-black text-slate-900 mt-1.5 flex items-center gap-2">
-              <span>{displayTitle}</span>
-              {(item.sku || item.sku_du_kien) && (
-                <span className="text-xs px-2 py-0.5 bg-slate-100 rounded-md font-bold text-slate-600">
-                  SKU: {item.sku || item.sku_du_kien}
-                </span>
-              )}
-            </h3>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* 3 Size Control Buttons: Nhỏ lại - Vừa - Mở rộng */}
+            <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl border border-slate-200 shadow-2xs mr-1">
+              <button
+                type="button"
+                onClick={() => setDrawerSize('small')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+                  drawerSize === 'small'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Nhỏ lại (Giao diện nhỏ gọn)"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Nhỏ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDrawerSize('medium')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+                  drawerSize === 'medium'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Vừa (Kích thước tiêu chuẩn)"
+              >
+                <Square className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Vừa</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDrawerSize('full')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+                  drawerSize === 'full'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Mở rộng (Toàn màn hình)"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Mở rộng</span>
+              </button>
+            </div>
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition cursor-pointer"
+              title="Đóng / Hủy"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* 2. CÁC TAB ĐIỀU HƯỚNG PHÍA TRÊN (TOP TABS - ĐÁP ỨNG CHÍNH XÁC YÊU CẦU) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-2.5 border-b border-slate-200 shrink-0 select-none">
+        {/* 2. CÁC TAB ĐIỀU HƯỚNG PHÍA TRÊN (TOP TABS) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto px-5 sm:px-6 py-2.5 border-b border-slate-200 shrink-0 select-none bg-slate-50/50">
           {/* Tab 1: Đơn hàng PO */}
           <button
             type="button"
@@ -396,7 +443,7 @@ export function XnkChiTietModal({
         </div>
 
         {/* 3. NỘI DUNG TỪNG TAB (SCROLLABLE BODY) */}
-        <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1 text-xs">
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 text-xs">
           {/* ============================================================ */}
           {/* TAB 1: ĐƠN HÀNG SẢN XUẤT PO                                   */}
           {/* ============================================================ */}
@@ -944,7 +991,7 @@ export function XnkChiTietModal({
         </div>
 
         {/* 4. Footer */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between shrink-0">
+        <div className="px-5 sm:px-6 py-3 border-t border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/80">
           <button
             type="button"
             onClick={onClose}

@@ -42,7 +42,8 @@ import {
   Check,
   Building2,
   Calendar,
-  ArrowLeft
+  ArrowLeft,
+  ArrowUpDown
 } from 'lucide-react';
 
 const TABS = [
@@ -75,6 +76,7 @@ export function XnkModule({ onNavigate }) {
   const [rankFilter, setRankFilter] = useState('ALL');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [sortDateOrder, setSortDateOrder] = useState('desc'); // 'desc' (lớn tới nhỏ - mới nhất lên đầu) | 'asc' (cũ lên đầu)
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -110,8 +112,7 @@ export function XnkModule({ onNavigate }) {
     setCurrentPage(1);
   }, [activeTab, searchTerm, statusFilter, authorFilter, nccFilter, planFilter, rankFilter, dateFrom, dateTo]);
 
-  // 1. Parsed Ý tưởng rows
-  // Columns: ['id_y_tuong', 'ngay_tao', 'nguoi_tao', 'sku_du_kien', 'ten_sp', 'mo_ta', 'link_tham_khao', 'trang_thai', 'nguoi_duyet', 'ghi_chu']
+  // 1. Parsed Ý tưởng rows (mặc định sắp xếp ngày từ lớn tới nhỏ)
   const parsedYtuongList = useMemo(() => {
     if (!xnkYtuongData || xnkYtuongData.length <= 1) return [];
     return xnkYtuongData.slice(1).map((row, idx) => ({
@@ -126,11 +127,15 @@ export function XnkModule({ onNavigate }) {
       trang_thai: row[7] || 'Mới tạo',
       nguoi_duyet: row[8] || '',
       ghi_chu: row[9] || ''
-    })).filter(item => item.id_y_tuong || item.ten_sp);
+    })).filter(item => item.id_y_tuong || item.ten_sp)
+      .sort((a, b) => {
+        const timeA = parseSimpleSheetDate(a.ngay_tao).getTime() || 0;
+        const timeB = parseSimpleSheetDate(b.ngay_tao).getTime() || 0;
+        return timeB - timeA;
+      });
   }, [xnkYtuongData]);
 
-  // 2. Parsed Mẫu rows
-  // Columns: ['id_mau', 'id_y_tuong', 'ten_ncc', 'lien_he_ncc', 'gia_mau', 'ngay_dat_mau', 'ngay_nhan_mau', 'link_anh_mau', 'danh_gia_cai_tien', 'danh_gia_xep_hang', 'trang_thai_duyet', 'ghi_chu']
+  // 2. Parsed Mẫu rows (mặc định sắp xếp ngày từ lớn tới nhỏ)
   const parsedMauList = useMemo(() => {
     if (!xnkMauData || xnkMauData.length <= 1) return [];
     return xnkMauData.slice(1).map((row, idx) => ({
@@ -147,11 +152,15 @@ export function XnkModule({ onNavigate }) {
       danh_gia_xep_hang: row[9] || '',
       trang_thai_duyet: row[10] || 'Chờ duyệt',
       ghi_chu: row[11] || ''
-    })).filter(item => item.id_mau || item.ten_ncc);
+    })).filter(item => item.id_mau || item.ten_ncc)
+      .sort((a, b) => {
+        const timeA = parseSimpleSheetDate(a.ngay_dat_mau || a.ngay_nhan_mau).getTime() || 0;
+        const timeB = parseSimpleSheetDate(b.ngay_dat_mau || b.ngay_nhan_mau).getTime() || 0;
+        return timeB - timeA;
+      });
   }, [xnkMauData]);
 
-  // 3. Parsed Đơn hàng PO rows
-  // Columns: ['ma_po', 'id_mau', 'sku', 'ten_sp', 'ten_ncc', 'so_luong', 'don_gia', 'tong_tien', 'tien_coc', 'ngay_dat_hang', 'ngay_sx_xong', 'tracking_van_chuyen', 'ngay_gui_hang', 'ngay_thong_quan', 'ngay_kho_nhan', 'slg_thuc_nhan', 'ke_hoach_ban', 'tinh_trang_cuoi', 'ghi_chu']
+  // 3. Parsed Đơn hàng PO rows (mặc định sắp xếp ngày từ lớn tới nhỏ)
   const parsedDonHangList = useMemo(() => {
     if (!xnkDonHangData || xnkDonHangData.length <= 1) return [];
     return xnkDonHangData.slice(1).map((row, idx) => ({
@@ -175,7 +184,12 @@ export function XnkModule({ onNavigate }) {
       ke_hoach_ban: row[16] || 'Bán ngay',
       tinh_trang_cuoi: row[17] || 'Đang sản xuất',
       ghi_chu: row[18] || ''
-    })).filter(item => item.ma_po || item.ten_sp);
+    })).filter(item => item.ma_po || item.ten_sp)
+      .sort((a, b) => {
+        const timeA = parseSimpleSheetDate(a.ngay_dat_hang || a.ngay_kho_nhan).getTime() || 0;
+        const timeB = parseSimpleSheetDate(b.ngay_dat_hang || b.ngay_kho_nhan).getTime() || 0;
+        return timeB - timeA;
+      });
   }, [xnkDonHangData]);
 
   // Helper map idea to sample
@@ -236,9 +250,10 @@ export function XnkModule({ onNavigate }) {
     setRankFilter('ALL');
     setDateFrom('');
     setDateTo('');
+    setSortDateOrder('desc');
   };
 
-  // Filtered Ý tưởng
+  // Filtered Ý tưởng (sắp xếp theo ngày lớn tới nhỏ)
   const filteredYtuong = useMemo(() => {
     return parsedYtuongList.filter(item => {
       if (statusFilter !== 'ALL' && item.trang_thai !== statusFilter) return false;
@@ -253,10 +268,14 @@ export function XnkModule({ onNavigate }) {
         if (!match) return false;
       }
       return true;
+    }).sort((a, b) => {
+      const timeA = parseSimpleSheetDate(a.ngay_tao).getTime() || 0;
+      const timeB = parseSimpleSheetDate(b.ngay_tao).getTime() || 0;
+      return sortDateOrder === 'asc' ? timeA - timeB : timeB - timeA;
     });
-  }, [parsedYtuongList, statusFilter, authorFilter, dateFrom, dateTo, searchTerm]);
+  }, [parsedYtuongList, statusFilter, authorFilter, dateFrom, dateTo, searchTerm, sortDateOrder]);
 
-  // Filtered Mẫu
+  // Filtered Mẫu (sắp xếp theo ngày lớn tới nhỏ)
   const filteredMau = useMemo(() => {
     return parsedMauList.filter(item => {
       if (statusFilter !== 'ALL' && item.trang_thai_duyet !== statusFilter) return false;
@@ -274,10 +293,14 @@ export function XnkModule({ onNavigate }) {
         if (!match) return false;
       }
       return true;
+    }).sort((a, b) => {
+      const timeA = parseSimpleSheetDate(a.ngay_dat_mau || a.ngay_nhan_mau).getTime() || 0;
+      const timeB = parseSimpleSheetDate(b.ngay_dat_mau || b.ngay_nhan_mau).getTime() || 0;
+      return sortDateOrder === 'asc' ? timeA - timeB : timeB - timeA;
     });
-  }, [parsedMauList, ytuongMap, statusFilter, rankFilter, nccFilter, dateFrom, dateTo, searchTerm]);
+  }, [parsedMauList, ytuongMap, statusFilter, rankFilter, nccFilter, dateFrom, dateTo, searchTerm, sortDateOrder]);
 
-  // Filtered Đơn PO
+  // Filtered Đơn PO (sắp xếp theo ngày lớn tới nhỏ)
   const filteredDonHang = useMemo(() => {
     return parsedDonHangList.filter(item => {
       if (statusFilter !== 'ALL' && item.tinh_trang_cuoi !== statusFilter) return false;
@@ -294,10 +317,14 @@ export function XnkModule({ onNavigate }) {
         if (!match) return false;
       }
       return true;
+    }).sort((a, b) => {
+      const timeA = parseSimpleSheetDate(a.ngay_dat_hang || a.ngay_kho_nhan).getTime() || 0;
+      const timeB = parseSimpleSheetDate(b.ngay_dat_hang || b.ngay_kho_nhan).getTime() || 0;
+      return sortDateOrder === 'asc' ? timeA - timeB : timeB - timeA;
     });
-  }, [parsedDonHangList, statusFilter, nccFilter, planFilter, dateFrom, dateTo, searchTerm]);
+  }, [parsedDonHangList, statusFilter, nccFilter, planFilter, dateFrom, dateTo, searchTerm, sortDateOrder]);
 
-  // Filtered Tiến độ 5 chặng (dành cho Tab 4 Kanban)
+  // Filtered Tiến độ 5 chặng (dành cho Tab 4 Kanban, sắp xếp theo ngày lớn tới nhỏ)
   const filteredTiendo = useMemo(() => {
     return parsedDonHangList.filter(item => {
       if (nccFilter !== 'ALL' && item.ten_ncc !== nccFilter) return false;
@@ -313,8 +340,12 @@ export function XnkModule({ onNavigate }) {
         if (!match) return false;
       }
       return true;
+    }).sort((a, b) => {
+      const timeA = parseSimpleSheetDate(a.ngay_dat_hang || a.ngay_kho_nhan).getTime() || 0;
+      const timeB = parseSimpleSheetDate(b.ngay_dat_hang || b.ngay_kho_nhan).getTime() || 0;
+      return sortDateOrder === 'asc' ? timeA - timeB : timeB - timeA;
     });
-  }, [parsedDonHangList, nccFilter, planFilter, dateFrom, dateTo, searchTerm]);
+  }, [parsedDonHangList, nccFilter, planFilter, dateFrom, dateTo, searchTerm, sortDateOrder]);
 
   // Handle Tab-specific current items
   const currentTotal = activeTab === 'ytuong' 
@@ -401,7 +432,7 @@ export function XnkModule({ onNavigate }) {
   const isLoading = loadingModules.xnk || loadingModules.xnk_ytuong || loadingModules.xnk_mau || loadingModules.xnk_donhang;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 flex-1 flex flex-col min-h-full">
       {/* 1. Header Toolbar */}
       <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-xs border border-slate-200">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -730,6 +761,21 @@ export function XnkModule({ onNavigate }) {
               className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none w-31"
             />
           </div>
+
+          {/* Nút đổi sắp xếp theo Ngày */}
+          <button
+            type="button"
+            onClick={() => setSortDateOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+              sortDateOrder === 'desc'
+                ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
+                : 'bg-amber-50 text-amber-700 border-amber-200 shadow-2xs'
+            }`}
+            title="Nhấp để đổi thứ tự sắp xếp theo ngày (Lớn ➔ Nhỏ hoặc Nhỏ ➔ Lớn)"
+          >
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            <span>Ngày: {sortDateOrder === 'desc' ? 'Mới ➔ Cũ (Lớn ➔ Nhỏ)' : 'Cũ ➔ Mới (Nhỏ ➔ Lớn)'}</span>
+          </button>
         </div>
 
         {/* Reset Filter Button */}
@@ -746,13 +792,22 @@ export function XnkModule({ onNavigate }) {
 
       {/* 5. TAB 1: BẢNG Ý TƯỞNG SẢN PHẨM */}
       {activeTab === 'ytuong' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex-1 flex flex-col justify-between min-h-[calc(100vh-340px)]">
+          <div className="overflow-x-auto overflow-y-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-50 shadow-2xs">
                 <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 select-none">
                   <th className="py-2.5 px-3 whitespace-nowrap">Mã ý tưởng</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Ngày tạo</th>
+                  <th 
+                    className="py-2.5 px-3 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition select-none"
+                    onClick={() => setSortDateOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    title="Nhấp để đổi thứ tự sắp xếp theo ngày"
+                  >
+                    <div className="flex items-center gap-1 text-slate-800">
+                      <span>Ngày tạo</span>
+                      <ArrowUpDown className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                  </th>
                   <th className="py-2.5 px-3 whitespace-nowrap">SKU dự kiến</th>
                   <th className="py-2.5 px-3 min-w-[200px]">Tên sản phẩm ý tưởng</th>
                   <th className="py-2.5 px-3 whitespace-nowrap">Người đề xuất</th>
@@ -865,7 +920,7 @@ export function XnkModule({ onNavigate }) {
             </table>
           </div>
 
-          <div className="p-3 border-t border-slate-100">
+          <div className="p-3 border-t border-slate-100 bg-white mt-auto shrink-0">
             <Pagination
               currentPage={currentPage}
               totalItems={filteredYtuong.length}
@@ -880,16 +935,25 @@ export function XnkModule({ onNavigate }) {
 
       {/* 6. TAB 2: BẢNG ĐẶT MẪU & NCC */}
       {activeTab === 'mau' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex-1 flex flex-col justify-between min-h-[calc(100vh-340px)]">
+          <div className="overflow-x-auto overflow-y-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-50 shadow-2xs">
                 <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 select-none">
                   <th className="py-2.5 px-3 whitespace-nowrap">Mã mẫu</th>
                   <th className="py-2.5 px-3 min-w-[160px]">Sản phẩm & Ý tưởng</th>
                   <th className="py-2.5 px-3 min-w-[150px]">Nhà cung cấp / Xưởng</th>
                   <th className="py-2.5 px-3 whitespace-nowrap text-right">Giá mẫu</th>
-                  <th className="py-2.5 px-3 whitespace-nowrap">Ngày đặt / Nhận</th>
+                  <th 
+                    className="py-2.5 px-3 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition select-none"
+                    onClick={() => setSortDateOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    title="Nhấp để đổi thứ tự sắp xếp theo ngày"
+                  >
+                    <div className="flex items-center gap-1 text-slate-800">
+                      <span>Ngày đặt / Nhận</span>
+                      <ArrowUpDown className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                  </th>
                   <th className="py-2.5 px-3 whitespace-nowrap text-center">Ảnh mẫu thực tế</th>
                   <th className="py-2.5 px-3 min-w-[180px]">Đánh giá cải tiến</th>
                   <th className="py-2.5 px-3 whitespace-nowrap text-center">Xếp hạng</th>
@@ -1041,7 +1105,7 @@ export function XnkModule({ onNavigate }) {
             </table>
           </div>
 
-          <div className="p-3 border-t border-slate-100">
+          <div className="p-3 border-t border-slate-100 bg-white mt-auto shrink-0">
             <Pagination
               currentPage={currentPage}
               totalItems={filteredMau.length}
@@ -1056,12 +1120,22 @@ export function XnkModule({ onNavigate }) {
 
       {/* 7. TAB 3: BẢNG ĐƠN HÀNG SẢN XUẤT (PO) */}
       {activeTab === 'donhang' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex-1 flex flex-col justify-between min-h-[calc(100vh-340px)]">
+          <div className="overflow-x-auto overflow-y-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-50 shadow-2xs">
                 <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 select-none">
                   <th className="py-2.5 px-3 whitespace-nowrap">Mã PO</th>
+                  <th 
+                    className="py-2.5 px-3 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition select-none"
+                    onClick={() => setSortDateOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    title="Nhấp để đổi thứ tự sắp xếp theo ngày"
+                  >
+                    <div className="flex items-center gap-1 text-slate-800">
+                      <span>Ngày đặt</span>
+                      <ArrowUpDown className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                  </th>
                   <th className="py-2.5 px-3 whitespace-nowrap">SKU</th>
                   <th className="py-2.5 px-3 min-w-[180px]">Tên sản phẩm</th>
                   <th className="py-2.5 px-3 whitespace-nowrap">Nhà cung cấp</th>
@@ -1078,7 +1152,7 @@ export function XnkModule({ onNavigate }) {
               <tbody className="divide-y divide-slate-100">
                 {paginatedDonHang.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="py-8 text-center text-slate-400">
+                    <td colSpan={13} className="py-8 text-center text-slate-400">
                       Không tìm thấy đơn đặt hàng PO nào
                     </td>
                   </tr>
@@ -1095,6 +1169,9 @@ export function XnkModule({ onNavigate }) {
                     >
                       <td className="py-2.5 px-3 font-semibold text-blue-700 whitespace-nowrap">
                         {item.ma_po}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap font-medium">
+                        {formatDateVN(item.ngay_dat_hang) || '-'}
                       </td>
                       <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
                         {item.sku}
@@ -1183,7 +1260,7 @@ export function XnkModule({ onNavigate }) {
             </table>
           </div>
 
-          <div className="p-3 border-t border-slate-100">
+          <div className="p-3 border-t border-slate-100 bg-white mt-auto shrink-0">
             <Pagination
               currentPage={currentPage}
               totalItems={filteredDonHang.length}
@@ -1198,8 +1275,8 @@ export function XnkModule({ onNavigate }) {
 
       {/* 8. TAB 4: THEO DÕI TIẾN ĐỘ 5 CHẶNG (KANBAN VIEW) */}
       {activeTab === 'tiendo' && (
-        <div className="space-y-4">
-          <div className="p-3 bg-white rounded-2xl border border-slate-200 shadow-2xs text-xs text-slate-600 flex items-center justify-between">
+        <div className="space-y-4 flex-1 flex flex-col min-h-[calc(100vh-340px)]">
+          <div className="p-3 bg-white rounded-2xl border border-slate-200 shadow-2xs text-xs text-slate-600 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <span className="font-bold text-slate-800">Quy trình 5 chặng xuất nhập khẩu:</span>
               <span>1. Đặt hàng & Cọc ➔ 2. Sản xuất ➔ 3. Vận chuyển quốc tế ➔ 4. Thông quan hải quan ➔ 5. Kho nhận hàng</span>
@@ -1210,7 +1287,7 @@ export function XnkModule({ onNavigate }) {
           </div>
 
           {/* 5 KANBAN COLUMNS */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 flex-1">
             {[
               {
                 id: 'stage_1',

@@ -739,10 +739,16 @@ export function XnkDonHangDrawer({
         {/* Header thông tin nhanh & Trạng thái sau cùng tự động */}
         <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500">Mã PO:</span>
-            <span className="px-2.5 py-1 bg-white border border-slate-200 text-blue-700 font-extrabold text-xs rounded-lg shadow-2xs">
-              {maPo}
-            </span>
+            <label className="text-xs font-bold text-slate-700 whitespace-nowrap">Mã PO:</label>
+            <input
+              type="text"
+              value={maPo}
+              onChange={(e) => setMaPo(e.target.value)}
+              placeholder="VD: PO-20261012-1234"
+              className="px-2.5 py-1 bg-white border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-blue-700 font-extrabold text-xs rounded-lg shadow-2xs outline-none"
+              title="Nhấp để chỉnh sửa mã PO"
+              required
+            />
           </div>
 
           <div className="flex items-center gap-3">
