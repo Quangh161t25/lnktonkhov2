@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { XnkYtuongDrawer } from './XnkYtuongDrawer';
+import { XnkChiTietModal } from './XnkChiTietModal';
 import { Pagination } from '../../common/Pagination';
 import { exportToExcel } from '../../../services/excelService';
 import { 
@@ -52,9 +53,11 @@ export function XnkYtuongModule({ onNavigate }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
 
-  // Drawer
+  // Drawer & Detail Modal
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [detailItem, setDetailItem] = useState(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   useEffect(() => {
     fetchModule('xnk_ytuong');
@@ -328,8 +331,16 @@ export function XnkYtuongModule({ onNavigate }) {
                     const isSelected = selectedIds.includes(item.id_y_tuong);
 
                     return (
-                      <tr key={item.id_y_tuong} className={`hover:bg-slate-50/70 transition ${isSelected ? 'bg-blue-50/40' : ''}`}>
-                        <td className="py-2.5 px-3 text-center">
+                      <tr 
+                        key={item.id_y_tuong} 
+                        onClick={() => {
+                          setDetailItem(item);
+                          setIsDetailOpen(true);
+                        }}
+                        className={`hover:bg-blue-50/60 transition cursor-pointer select-none ${isSelected ? 'bg-blue-50/40' : ''}`}
+                        title="Bấm để xem chi tiết liên kết (Đơn hàng PO, Mẫu thử, Tiến độ)"
+                      >
+                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -366,7 +377,7 @@ export function XnkYtuongModule({ onNavigate }) {
                             {item.trang_thai}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                           {item.link_tham_khao ? (
                             <a
                               href={item.link_tham_khao.startsWith('http') ? item.link_tham_khao : `https://${item.link_tham_khao}`}
@@ -386,7 +397,7 @@ export function XnkYtuongModule({ onNavigate }) {
                             {item.mo_ta || item.ghi_chu || '-'}
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
                             {item.trang_thai === 'Đã duyệt' && (
                               <button
@@ -446,6 +457,20 @@ export function XnkYtuongModule({ onNavigate }) {
         editItem={selectedItem}
         onSaved={() => fetchModule('xnk_ytuong', true)}
         onCreateSampleFromIdea={() => onNavigate('xnk_mau')}
+      />
+
+      {/* Modal Xem chi tiết liên kết đa chiều (có các tab phía trên) */}
+      <XnkChiTietModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        type="ytuong"
+        item={detailItem}
+        onOpenEditYtuong={(it) => {
+          setSelectedItem(it);
+          setIsDrawerOpen(true);
+        }}
+        onOpenCreateMau={() => onNavigate('xnk_mau')}
+        onOpenCreatePo={() => onNavigate('xnk_donhang')}
       />
     </div>
   );

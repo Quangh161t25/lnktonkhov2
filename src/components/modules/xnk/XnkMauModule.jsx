@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { XnkMauDrawer } from './XnkMauDrawer';
+import { XnkChiTietModal } from './XnkChiTietModal';
 import { Pagination } from '../../common/Pagination';
 import { exportToExcel } from '../../../services/excelService';
 import { 
@@ -52,13 +53,18 @@ export function XnkMauModule({ onNavigate }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
 
-  // Drawer
+  // Drawer & Detail Modal
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+
+  const [detailItem, setDetailItem] = useState(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   useEffect(() => {
     fetchModule('xnk_mau');
     fetchModule('xnk_ytuong');
+    fetchModule('xnk_donhang');
+    fetchModule('sanpham');
   }, [fetchModule]);
 
   useEffect(() => {
@@ -354,8 +360,15 @@ export function XnkMauModule({ onNavigate }) {
                     const isSelected = selectedIds.includes(item.id_mau);
 
                     return (
-                      <tr key={item.id_mau} className={`hover:bg-slate-50/70 transition ${isSelected ? 'bg-blue-50/40' : ''}`}>
-                        <td className="py-2.5 px-3 text-center">
+                      <tr 
+                        key={item.id_mau} 
+                        onClick={() => {
+                          setDetailItem(item);
+                          setIsDetailOpen(true);
+                        }}
+                        className={`hover:bg-slate-50/70 transition cursor-pointer ${isSelected ? 'bg-blue-50/40' : ''}`}
+                      >
+                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -392,7 +405,7 @@ export function XnkMauModule({ onNavigate }) {
                             Nhận: {item.ngay_nhan_mau ? formatDateVN(item.ngay_nhan_mau) : 'Chưa nhận'}
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 text-center">
+                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                           {item.link_anh_mau ? (
                             <a 
                               href={item.link_anh_mau} 
@@ -448,7 +461,7 @@ export function XnkMauModule({ onNavigate }) {
                             {item.trang_thai_duyet}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
                             {isApproved && (
                               <button
@@ -509,6 +522,19 @@ export function XnkMauModule({ onNavigate }) {
         ytuongList={ytuongList}
         onSaved={() => fetchModule('xnk_mau', true)}
         onCreateOrderFromSample={() => onNavigate('xnk_donhang')}
+      />
+
+      {/* Cross-lifecycle Detail Modal */}
+      <XnkChiTietModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        type="mau"
+        item={detailItem}
+        onOpenEditMau={(mau) => {
+          setSelectedItem(mau);
+          setIsDrawerOpen(true);
+        }}
+        onOpenCreatePo={() => onNavigate('xnk_donhang')}
       />
     </div>
   );

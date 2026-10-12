@@ -6,6 +6,7 @@ import { XnkYtuongDrawer } from './XnkYtuongDrawer';
 import { XnkMauDrawer } from './XnkMauDrawer';
 import { XnkDonHangDrawer } from './XnkDonHangDrawer';
 import { XnkTrackingModal } from './XnkTrackingModal';
+import { XnkChiTietModal } from './XnkChiTietModal';
 import { exportToExcel } from '../../../services/excelService';
 import { 
   formatDateVN, 
@@ -85,6 +86,11 @@ export function XnkModule({ onNavigate }) {
 
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
   const [trackingOrder, setTrackingOrder] = useState(null);
+
+  // Cross-lifecycle Detail Modal
+  const [detailItem, setDetailItem] = useState(null);
+  const [detailType, setDetailType] = useState('ytuong');
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   // Auto fetch data on mount
   useEffect(() => {
@@ -588,7 +594,15 @@ export function XnkModule({ onNavigate }) {
                   </tr>
                 ) : (
                   paginatedYtuong.map((item) => (
-                    <tr key={item.id_y_tuong} className="hover:bg-slate-50/70 transition">
+                    <tr 
+                      key={item.id_y_tuong} 
+                      onClick={() => {
+                        setDetailItem(item);
+                        setDetailType('ytuong');
+                        setIsDetailOpen(true);
+                      }}
+                      className="hover:bg-slate-50/70 transition cursor-pointer"
+                    >
                       <td className="py-2.5 px-3 font-semibold text-blue-700 whitespace-nowrap">
                         {item.id_y_tuong}
                       </td>
@@ -615,7 +629,7 @@ export function XnkModule({ onNavigate }) {
                           {item.trang_thai}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                         {item.link_tham_khao ? (
                           <a
                             href={item.link_tham_khao.startsWith('http') ? item.link_tham_khao : `https://${item.link_tham_khao}`}
@@ -635,7 +649,7 @@ export function XnkModule({ onNavigate }) {
                           {item.mo_ta || item.ghi_chu || '-'}
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           {item.trang_thai === 'Đã duyệt' && (
                             <button
@@ -719,7 +733,15 @@ export function XnkModule({ onNavigate }) {
                     const isApproved = item.trang_thai_duyet === 'Đã duyệt (Cho phép đặt thật)' || item.danh_gia_xep_hang === 'Đạt';
 
                     return (
-                      <tr key={item.id_mau} className="hover:bg-slate-50/70 transition">
+                      <tr 
+                        key={item.id_mau} 
+                        onClick={() => {
+                          setDetailItem(item);
+                          setDetailType('mau');
+                          setIsDetailOpen(true);
+                        }}
+                        className="hover:bg-slate-50/70 transition cursor-pointer"
+                      >
                         <td className="py-2.5 px-3 font-semibold text-blue-700 whitespace-nowrap">
                           {item.id_mau}
                         </td>
@@ -746,7 +768,7 @@ export function XnkModule({ onNavigate }) {
                             Nhận: {item.ngay_nhan_mau ? formatDateVN(item.ngay_nhan_mau) : 'Chưa nhận'}
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 text-center">
+                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                           {item.link_anh_mau ? (
                             <a 
                               href={item.link_anh_mau} 
@@ -802,7 +824,7 @@ export function XnkModule({ onNavigate }) {
                             {item.trang_thai_duyet}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
                             {isApproved && (
                               <button
@@ -885,7 +907,15 @@ export function XnkModule({ onNavigate }) {
                   </tr>
                 ) : (
                   paginatedDonHang.map((item) => (
-                    <tr key={item.ma_po} className="hover:bg-slate-50/70 transition">
+                    <tr 
+                      key={item.ma_po} 
+                      onClick={() => {
+                        setDetailItem(item);
+                        setDetailType('donhang');
+                        setIsDetailOpen(true);
+                      }}
+                      className="hover:bg-slate-50/70 transition cursor-pointer"
+                    >
                       <td className="py-2.5 px-3 font-semibold text-blue-700 whitespace-nowrap">
                         {item.ma_po}
                       </td>
@@ -934,9 +964,10 @@ export function XnkModule({ onNavigate }) {
                           {item.tinh_trang_cuoi}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setTrackingOrder(item);
                             setIsTrackingModalOpen(true);
                           }}
@@ -945,7 +976,7 @@ export function XnkModule({ onNavigate }) {
                           <Eye className="w-3.5 h-3.5" /> Xem Stepper
                         </button>
                       </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => {
@@ -1067,8 +1098,9 @@ export function XnkModule({ onNavigate }) {
                         <div
                           key={order.ma_po}
                           onClick={() => {
-                            setTrackingOrder(order);
-                            setIsTrackingModalOpen(true);
+                            setDetailItem(order);
+                            setDetailType('tiendo');
+                            setIsDetailOpen(true);
                           }}
                           className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:shadow-md hover:border-blue-300 transition cursor-pointer space-y-2 group"
                         >
@@ -1076,13 +1108,27 @@ export function XnkModule({ onNavigate }) {
                             <span className="text-xs font-bold text-blue-700 group-hover:underline">
                               {order.ma_po}
                             </span>
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                              order.ke_hoach_ban === 'Bán ngay'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}>
-                              {order.ke_hoach_ban}
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTrackingOrder(order);
+                                  setIsTrackingModalOpen(true);
+                                }}
+                                title="Xem Stepper nhanh"
+                                className="p-0.5 rounded text-slate-400 hover:text-blue-600 transition"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                order.ke_hoach_ban === 'Bán ngay'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {order.ke_hoach_ban}
+                              </span>
+                            </div>
                           </div>
 
                           <div>
@@ -1151,6 +1197,31 @@ export function XnkModule({ onNavigate }) {
         isOpen={isTrackingModalOpen}
         onClose={() => setIsTrackingModalOpen(false)}
         order={trackingOrder}
+      />
+
+      {/* Cross-lifecycle Detail Modal */}
+      <XnkChiTietModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        type={detailType}
+        item={detailItem}
+        onOpenEditYtuong={(idea) => {
+          setSelectedYtuong(idea);
+          setIsYtuongDrawerOpen(true);
+        }}
+        onOpenEditMau={(mau) => {
+          setSelectedMau(mau);
+          setIsMauDrawerOpen(true);
+        }}
+        onOpenEditPo={(po) => {
+          setSelectedDonHang(po);
+          setIsDonHangDrawerOpen(true);
+        }}
+        onOpenCreateMau={handleCreateSampleFromIdea}
+        onOpenCreatePo={() => {
+          setSelectedDonHang(null);
+          setIsDonHangDrawerOpen(true);
+        }}
       />
     </div>
   );

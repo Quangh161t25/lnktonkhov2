@@ -3,6 +3,7 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { Pagination } from '../../common/Pagination';
 import { XnkNccDrawer } from './XnkNccDrawer';
+import { XnkChiTietModal } from './XnkChiTietModal';
 import { ExcelUploadModal } from '../../common/ExcelUploadModal';
 import { exportToExcel, downloadModuleTemplate } from '../../../services/excelService';
 import { 
@@ -62,10 +63,16 @@ export function XnkNccModule({ onNavigate }) {
   const [editUser, setEditUser] = useState(null);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
 
+  // Cross-lifecycle Detail Modal
+  const [detailItem, setDetailItem] = useState(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+
   // Fetch users & XNK module on mount (just like KhachhangModule)
   useEffect(() => {
     fetchUsersData();
     fetchModule('xnk');
+    fetchModule('xnk_ytuong');
+    fetchModule('sanpham');
   }, [fetchUsersData, fetchModule]);
 
   useEffect(() => {
@@ -534,7 +541,14 @@ export function XnkNccModule({ onNavigate }) {
               ) : (
                 paginatedList.map((item) => {
                   return (
-                    <tr key={item.id + item.name} className="hover:bg-slate-50/70 transition">
+                    <tr 
+                      key={item.id + item.name} 
+                      onClick={() => {
+                        setDetailItem(item);
+                        setIsDetailOpen(true);
+                      }}
+                      className="hover:bg-slate-50/70 transition cursor-pointer"
+                    >
                       <td className="py-2.5 px-3 font-extrabold text-blue-700 whitespace-nowrap">
                         {item.id}
                       </td>
@@ -568,10 +582,13 @@ export function XnkNccModule({ onNavigate }) {
                           <span className="text-slate-400 italic">Chưa có liên hệ</span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {item.so_mau > 0 ? (
                           <button
-                            onClick={() => onNavigate('xnk_mau')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onNavigate('xnk_mau');
+                            }}
                             className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-semibold text-[11px] transition cursor-pointer"
                             title="Bấm để xem các mẫu của NCC này"
                           >
@@ -584,10 +601,13 @@ export function XnkNccModule({ onNavigate }) {
                           <span className="text-slate-400 italic">-</span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {item.so_po > 0 ? (
                           <button
-                            onClick={() => onNavigate('xnk_donhang')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onNavigate('xnk_donhang');
+                            }}
                             className="px-2.5 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] transition cursor-pointer"
                             title="Bấm để xem các đơn PO của NCC này"
                           >
@@ -607,7 +627,7 @@ export function XnkNccModule({ onNavigate }) {
                           <span className="text-slate-400 text-[11px]">Chưa cấp</span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => {
@@ -676,6 +696,15 @@ export function XnkNccModule({ onNavigate }) {
         moduleName="xnk_ncc"
         expectedColumns={['id', 'ho_ten', 'hinh_anh', 'gioi_tinh', 'ngay_sinh', 'quyen', 'mk', 'truong']}
         onImportRows={handleImportExcelRows}
+      />
+
+      {/* Cross-lifecycle Detail Modal */}
+      <XnkChiTietModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        type="ncc"
+        item={detailItem}
+        onNavigate={onNavigate}
       />
     </div>
   );

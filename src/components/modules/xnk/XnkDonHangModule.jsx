@@ -3,6 +3,7 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { XnkDonHangDrawer } from './XnkDonHangDrawer';
 import { XnkTrackingModal } from './XnkTrackingModal';
+import { XnkChiTietModal } from './XnkChiTietModal';
 import { Pagination } from '../../common/Pagination';
 import { exportToExcel } from '../../../services/excelService';
 import { 
@@ -56,12 +57,15 @@ export function XnkDonHangModule({ onNavigate }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
 
-  // Drawer & Tracking Modal
+  // Drawer & Tracking Modal & Detail Modal
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
   const [trackingOrder, setTrackingOrder] = useState(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+
+  const [detailItem, setDetailItem] = useState(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   useEffect(() => {
     fetchModule('xnk_donhang');
@@ -383,8 +387,15 @@ export function XnkDonHangModule({ onNavigate }) {
                     const isSelected = selectedIds.includes(item.ma_po);
 
                     return (
-                      <tr key={item.ma_po} className={`hover:bg-slate-50/70 transition ${isSelected ? 'bg-blue-50/40' : ''}`}>
-                        <td className="py-2.5 px-3 text-center">
+                      <tr 
+                        key={item.ma_po} 
+                        onClick={() => {
+                          setDetailItem(item);
+                          setIsDetailOpen(true);
+                        }}
+                        className={`hover:bg-slate-50/70 transition cursor-pointer ${isSelected ? 'bg-blue-50/40' : ''}`}
+                      >
+                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -449,9 +460,10 @@ export function XnkDonHangModule({ onNavigate }) {
                             {item.tinh_trang_cuoi}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setTrackingOrder(item);
                               setIsTrackingModalOpen(true);
                             }}
@@ -460,7 +472,7 @@ export function XnkDonHangModule({ onNavigate }) {
                             <Eye className="w-3.5 h-3.5" /> Stepper
                           </button>
                         </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
                             <button
                               onClick={() => {
@@ -518,6 +530,18 @@ export function XnkDonHangModule({ onNavigate }) {
         isOpen={isTrackingModalOpen}
         onClose={() => setIsTrackingModalOpen(false)}
         order={trackingOrder}
+      />
+
+      {/* Cross-lifecycle Detail Modal */}
+      <XnkChiTietModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        type="donhang"
+        item={detailItem}
+        onOpenEditPo={(po) => {
+          setSelectedItem(po);
+          setIsDrawerOpen(true);
+        }}
       />
     </div>
   );
