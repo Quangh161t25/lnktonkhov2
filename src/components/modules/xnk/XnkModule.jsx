@@ -912,7 +912,7 @@ export function XnkModule({ onNavigate }) {
                       </td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          item.ke_hoach_ban === 'Bán ngay'
+                          item.ke_hoach_ban?.startsWith('Bán ngay')
                             ? 'bg-emerald-100 text-emerald-800'
                             : 'bg-amber-100 text-amber-800'
                         }`}>

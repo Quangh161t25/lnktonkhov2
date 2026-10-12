@@ -66,6 +66,7 @@ export function XnkDonHangModule({ onNavigate }) {
   useEffect(() => {
     fetchModule('xnk_donhang');
     fetchModule('xnk_mau');
+    fetchModule('xnk_ytuong');
   }, [fetchModule]);
 
   useEffect(() => {
@@ -127,7 +128,10 @@ export function XnkDonHangModule({ onNavigate }) {
     return donHangList.filter(item => {
       if (statusFilter !== 'ALL' && item.tinh_trang_cuoi !== statusFilter) return false;
       if (nccFilter !== 'ALL' && item.ten_ncc !== nccFilter) return false;
-      if (planFilter !== 'ALL' && item.ke_hoach_ban !== planFilter) return false;
+      if (planFilter !== 'ALL') {
+        if (planFilter === 'Bán ngay' && !item.ke_hoach_ban.startsWith('Bán ngay')) return false;
+        if (planFilter.startsWith('Bán sau') && !item.ke_hoach_ban.startsWith('Bán sau')) return false;
+      }
       if (searchTerm) {
         const match = 
           matchesSearch(item.ma_po, searchTerm) ||
@@ -422,7 +426,7 @@ export function XnkDonHangModule({ onNavigate }) {
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                            item.ke_hoach_ban === 'Bán ngay'
+                            item.ke_hoach_ban?.startsWith('Bán ngay')
                               ? 'bg-emerald-100 text-emerald-800'
                               : 'bg-amber-100 text-amber-800'
                           }`}>
