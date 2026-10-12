@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from '../../common/Drawer';
+import { ProductSearchCell } from '../../common/ProductSearchCell';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
-import { formatDateInput } from '../../../utils/formatters';
+import { formatDateInput, cleanNumber, formatCurrency } from '../../../utils/formatters';
 import { 
   Lightbulb, 
   CheckCircle2, 
@@ -31,7 +32,25 @@ export function XnkYtuongDrawer({
   onCreateSampleFromIdea 
 }) {
   const { currentUser, hasActionPermission } = useAuth();
-  const { appendRow, updateRow, logAuditAction } = useData();
+  const { appendRow, updateRow, logAuditAction, productData, fetchModule } = useData();
+
+  useEffect(() => {
+    if (isOpen) {
+      if (!productData || productData.length <= 1) {
+        fetchModule('sanpham');
+      }
+    }
+  }, [isOpen, productData, fetchModule]);
+
+  // Danh sách sản phẩm từ DS_SP
+  const productList = useMemo(() => {
+    if (!productData || productData.length <= 1) return [];
+    return productData.slice(1).map(r => ({
+      id: (r[0] || '').toString().trim(),
+      name: (r[1] || '').toString().trim(),
+      price: cleanNumber(r[4]) || 0
+    })).filter(p => p.id);
+  }, [productData]);
 
   const [idYtuong, setIdYtuong] = useState('');
   const [ngayTao, setNgayTao] = useState(formatDateInput(new Date()));
@@ -202,16 +221,55 @@ export function XnkYtuongDrawer({
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              SKU dự kiến
-            </label>
-            <input
-              type="text"
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">
+                SKU dự kiến
+              </label>
+              {productList.length > 0 && (
+                <span className="text-[10px] text-blue-600 font-bold">
+                  ({productList.length} SP có sẵn)
+                </span>
+              )}
+            </div>
+            <ProductSearchCell
               value={skuDuKien}
-              onChange={(e) => setSkuDuKien(e.target.value)}
-              placeholder="VD: LNK-NEW-01..."
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              onChange={(val) => setSkuDuKien(val)}
+              onSelectProduct={(prod) => {
+                setSkuDuKien(prod.id);
+                if (prod.name && (!tenSp || !tenSp.trim())) {
+                  setTenSp(prod.name);
+                }
+              }}
+              productList={productList}
+              placeholder="VD: LNK-NEW-01 hoặc chọn từ DS_SP..."
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-blue-800 uppercase focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
             />
+            {productList.length > 0 && (
+              <div className="mt-1">
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    if (!selectedId) return;
+                    const found = productList.find(p => p.id === selectedId);
+                    if (found) {
+                      setSkuDuKien(found.id);
+                      if (found.name && (!tenSp || !tenSp.trim())) {
+                        setTenSp(found.name);
+                      }
+                    }
+                  }}
+                  className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 outline-none hover:bg-slate-100 cursor-pointer"
+                >
+                  <option value="">-- Hoặc chọn nhanh từ DS sản phẩm ({productList.length} SP) --</option>
+                  {productList.map(p => (
+                    <option key={p.id} value={p.id}>
+                      [{p.id}] {p.name} {p.price > 0 ? `(${formatCurrency(p.price)})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 

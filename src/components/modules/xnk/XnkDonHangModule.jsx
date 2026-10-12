@@ -67,6 +67,7 @@ export function XnkDonHangModule({ onNavigate }) {
     fetchModule('xnk_donhang');
     fetchModule('xnk_mau');
     fetchModule('xnk_ytuong');
+    fetchModule('sanpham');
   }, [fetchModule]);
 
   useEffect(() => {

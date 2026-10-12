@@ -58,6 +58,7 @@ export function XnkYtuongModule({ onNavigate }) {
 
   useEffect(() => {
     fetchModule('xnk_ytuong');
+    fetchModule('sanpham');
   }, [fetchModule]);
 
   useEffect(() => {

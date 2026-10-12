@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from '../../common/Drawer';
+import { ProductSearchCell } from '../../common/ProductSearchCell';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { 
@@ -83,8 +84,29 @@ export function XnkDonHangDrawer({
     updateRow, 
     logAuditAction, 
     xnkYtuongData, 
-    xnkMauData 
+    xnkMauData,
+    productData,
+    fetchModule 
   } = useData();
+
+  // Đảm bảo dữ liệu danh sách sản phẩm DS_SP được tải
+  useEffect(() => {
+    if (isOpen) {
+      if (!productData || productData.length <= 1) {
+        fetchModule('sanpham');
+      }
+    }
+  }, [isOpen, productData, fetchModule]);
+
+  // Danh mục sản phẩm từ DS_SP (hỗ trợ chọn SKU từ DS sản phẩm)
+  const productList = useMemo(() => {
+    if (!productData || productData.length <= 1) return [];
+    return productData.slice(1).map(r => ({
+      id: (r[0] || '').toString().trim(),
+      name: (r[1] || '').toString().trim(),
+      price: cleanNumber(r[4]) || 0
+    })).filter(p => p.id);
+  }, [productData]);
 
   // Chế độ xem lịch trình: 'TABLE' (Bảng ma trận) vs 'CALENDAR' (Dạng Lịch/Gantt)
   const [timelineViewMode, setTimelineViewMode] = useState('TABLE');
@@ -777,17 +799,53 @@ export function XnkDonHangDrawer({
           {/* SKU, Tên sản phẩm, Nhà cung cấp */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                SKU sản phẩm <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  SKU sản phẩm <span className="text-rose-500">*</span>
+                </label>
+                {productList.length > 0 && (
+                  <span className="text-[10px] text-blue-600 font-bold">
+                    ({productList.length} SP có sẵn)
+                  </span>
+                )}
+              </div>
+              <ProductSearchCell
                 value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                placeholder="VD: LNK-KB-01..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                required
+                onChange={(val) => setSku(val)}
+                onSelectProduct={(prod) => {
+                  setSku(prod.id);
+                  if (prod.name) setTenSp(prod.name);
+                  if (prod.price && donGia === 0) setDonGia(prod.price);
+                }}
+                productList={productList}
+                placeholder="Gõ hoặc chọn SKU từ DS sản phẩm..."
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-blue-800 uppercase focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
               />
+              {productList.length > 0 && (
+                <div className="mt-1">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      if (!selectedId) return;
+                      const found = productList.find(p => p.id === selectedId);
+                      if (found) {
+                        setSku(found.id);
+                        if (found.name) setTenSp(found.name);
+                        if (found.price && donGia === 0) setDonGia(found.price);
+                      }
+                    }}
+                    className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 outline-none hover:bg-slate-100 cursor-pointer"
+                  >
+                    <option value="">-- Hoặc chọn nhanh từ danh mục ({productList.length} SP) --</option>
+                    {productList.map(p => (
+                      <option key={p.id} value={p.id}>
+                        [{p.id}] {p.name} {p.price > 0 ? `(${formatCurrency(p.price)})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div>
