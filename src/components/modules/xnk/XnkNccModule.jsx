@@ -2,7 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { Pagination } from '../../common/Pagination';
-import { exportToExcel } from '../../../services/excelService';
+import { XnkNccDrawer } from './XnkNccDrawer';
+import { ExcelUploadModal } from '../../common/ExcelUploadModal';
+import { exportToExcel, downloadModuleTemplate } from '../../../services/excelService';
 import { 
   formatCurrency, 
   formatNumber, 
@@ -19,14 +21,17 @@ import {
   List, 
   BarChart3, 
   Phone, 
-  MessageSquare, 
   ShoppingCart, 
-  PackageCheck, 
-  ExternalLink,
-  Award,
+  PackageSearch,
+  Plus,
+  Upload,
+  FileSpreadsheet,
+  Edit3,
+  Trash2,
   CheckCircle2,
+  Award,
   TrendingUp,
-  PackageSearch
+  Tag
 } from 'lucide-react';
 
 export function XnkNccModule({ onNavigate }) {
@@ -34,110 +39,175 @@ export function XnkNccModule({ onNavigate }) {
     xnkMauData, 
     xnkDonHangData, 
     fetchModule, 
-    loadingModules 
+    loadingModules,
+    upsertUser,
+    deleteUser,
+    fetchUsersData
   } = useData();
 
-  const { currentUser } = useAuth();
+  const { usersData, isAdminSession } = useAuth();
 
-  // Sub-tabs: [Danh sách] vs [Thống kê] (Matching Screenshot 2)
+  // Sub-tabs: [Danh sách] vs [Thống kê] (Screenshot 2)
   const [activeSubTab, setActiveSubTab] = useState('LIST'); // 'LIST' | 'STATS'
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'HAS_PO' | 'SAMPLE_PASS' | 'SAMPLE_ONLY'
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
 
+  // Drawer & Excel Modal States
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [editUser, setEditUser] = useState(null);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+
+  // Fetch users & XNK module on mount (just like KhachhangModule)
   useEffect(() => {
+    fetchUsersData();
     fetchModule('xnk');
-  }, [fetchModule]);
+  }, [fetchUsersData, fetchModule]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter]);
 
-  // Aggregate NCC List from xnkMauData and xnkDonHangData
-  const nccList = useMemo(() => {
-    const map = new Map();
+  // Aggregate stats from Sample and PO Orders
+  const xnkStatsByNcc = useMemo(() => {
+    const stats = new Map();
 
-    // 1. Process Samples data
+    // 1. Samples
     if (xnkMauData && xnkMauData.length > 1) {
-      xnkMauData.slice(1).forEach((r, idx) => {
-        const tenNcc = (r[2] || '').trim();
+      xnkMauData.slice(1).forEach((r) => {
+        const tenNcc = (r[2] || '').trim().toLowerCase();
         if (!tenNcc) return;
 
-        const lienHe = (r[3] || '').trim();
-        const giaMau = cleanNumber(r[4]) || 0;
-        const ngayDat = r[5] || '';
-        const linkAnh = r[7] || '';
-        const danhGia = r[8] || '';
-        const xepHang = r[9] || 'Đạt';
-        const sếpDuyet = r[10] || '';
+        const xepHang = (r[9] || '').trim();
+        const sepDuyet = (r[10] || '').trim();
+        const isPassed = xepHang === 'Đạt' || sepDuyet === 'Đã duyệt (Cho phép đặt thật)' || sepDuyet === 'Đồng ý';
 
-        if (!map.has(tenNcc)) {
-          map.set(tenNcc, {
-            ten_ncc: tenNcc,
-            lien_he: lienHe,
-            so_mau: 0,
-            so_mau_dat: 0,
-            cac_mau: [],
-            so_po: 0,
-            tong_tien_po: 0,
-            cac_po: []
-          });
+        if (!stats.has(tenNcc)) {
+          stats.set(tenNcc, { so_mau: 0, so_mau_dat: 0, so_po: 0, tong_tien_po: 0 });
         }
-
-        const entry = map.get(tenNcc);
-        if (!entry.lien_he && lienHe) entry.lien_he = lienHe;
-        entry.so_mau += 1;
-        if (xepHang === 'Đạt' || sếpDuyet === 'Đồng ý') entry.so_mau_dat += 1;
-        entry.cac_mau.push({
-          id_mau: r[0],
-          gia_mau: giaMau,
-          ngay_dat: ngayDat,
-          link_anh: linkAnh,
-          xepHang,
-          danhGia
-        });
+        const item = stats.get(tenNcc);
+        item.so_mau += 1;
+        if (isPassed) item.so_mau_dat += 1;
       });
     }
 
-    // 2. Process PO Orders data
+    // 2. PO Orders
+    if (xnkDonHangData && xnkDonHangData.length > 1) {
+      xnkDonHangData.slice(1).forEach((r) => {
+        const tenNcc = (r[4] || '').trim().toLowerCase();
+        if (!tenNcc) return;
+
+        const tongTien = cleanNumber(r[7]) || 0;
+
+        if (!stats.has(tenNcc)) {
+          stats.set(tenNcc, { so_mau: 0, so_mau_dat: 0, so_po: 0, tong_tien_po: 0 });
+        }
+        const item = stats.get(tenNcc);
+        item.so_po += 1;
+        item.tong_tien_po += tongTien;
+      });
+    }
+
+    return stats;
+  }, [xnkMauData, xnkDonHangData]);
+
+  // Combined NCC List from DSNV (usersData) & XNK Sheets
+  const nccList = useMemo(() => {
+    const map = new Map();
+
+    // 1. Add all suppliers from usersData (DSNV)
+    (usersData || []).forEach(u => {
+      const typeStr = (u.type || '').toString().trim().toUpperCase();
+      const roleStr = (u.role || '').toString().trim().toUpperCase();
+
+      // Check if user is supplier
+      const isSupplier = typeStr.includes('NCC') || 
+                         typeStr.includes('NHÀ CUNG CẤP') || 
+                         typeStr.includes('XƯỞNG') ||
+                         roleStr === 'NCC';
+
+      if (isSupplier) {
+        const key = (u.name || u.id || '').trim().toLowerCase();
+        if (!key) return;
+
+        const stat = xnkStatsByNcc.get(key) || { so_mau: 0, so_mau_dat: 0, so_po: 0, tong_tien_po: 0 };
+
+        map.set(key, {
+          sheetRow: u.sheetRow,
+          id: u.id,
+          name: u.name,
+          contact: u.image || '',
+          note: u.gender || '',
+          type: u.type || 'KHÁCH HÀNG NCC',
+          password: u.password || '',
+          isSavedInDsnv: true,
+          so_mau: stat.so_mau,
+          so_mau_dat: stat.so_mau_dat,
+          so_po: stat.so_po,
+          tong_tien_po: stat.tong_tien_po
+        });
+      }
+    });
+
+    // 2. Also include any NCC found in xnkMauData / xnkDonHangData that wasn't in DSNV
+    if (xnkMauData && xnkMauData.length > 1) {
+      xnkMauData.slice(1).forEach((r) => {
+        const tenNcc = (r[2] || '').trim();
+        if (!tenNcc) return;
+        const key = tenNcc.toLowerCase();
+
+        if (!map.has(key)) {
+          const stat = xnkStatsByNcc.get(key) || { so_mau: 0, so_mau_dat: 0, so_po: 0, tong_tien_po: 0 };
+          map.set(key, {
+            sheetRow: null,
+            id: 'NCC-XNK',
+            name: tenNcc,
+            contact: (r[3] || '').trim(),
+            note: (r[11] || '').trim(),
+            type: 'KHÁCH HÀNG NCC',
+            password: '',
+            isSavedInDsnv: false,
+            so_mau: stat.so_mau,
+            so_mau_dat: stat.so_mau_dat,
+            so_po: stat.so_po,
+            tong_tien_po: stat.tong_tien_po
+          });
+        }
+      });
+    }
+
     if (xnkDonHangData && xnkDonHangData.length > 1) {
       xnkDonHangData.slice(1).forEach((r) => {
         const tenNcc = (r[4] || '').trim();
         if (!tenNcc) return;
+        const key = tenNcc.toLowerCase();
 
-        const maPo = r[0] || '';
-        const sku = r[2] || '';
-        const tenSp = r[3] || '';
-        const slg = cleanNumber(r[5]) || 0;
-        const tongTien = cleanNumber(r[7]) || 0;
-        const tinhTrang = r[13] || '';
-
-        if (!map.has(tenNcc)) {
-          map.set(tenNcc, {
-            ten_ncc: tenNcc,
-            lien_he: '',
-            so_mau: 0,
-            so_mau_dat: 0,
-            cac_mau: [],
-            so_po: 0,
-            tong_tien_po: 0,
-            cac_po: []
+        if (!map.has(key)) {
+          const stat = xnkStatsByNcc.get(key) || { so_mau: 0, so_mau_dat: 0, so_po: 0, tong_tien_po: 0 };
+          map.set(key, {
+            sheetRow: null,
+            id: 'NCC-XNK',
+            name: tenNcc,
+            contact: '',
+            note: '',
+            type: 'KHÁCH HÀNG NCC',
+            password: '',
+            isSavedInDsnv: false,
+            so_mau: stat.so_mau,
+            so_mau_dat: stat.so_mau_dat,
+            so_po: stat.so_po,
+            tong_tien_po: stat.tong_tien_po
           });
         }
-
-        const entry = map.get(tenNcc);
-        entry.so_po += 1;
-        entry.tong_tien_po += tongTien;
-        entry.cac_po.push({ maPo, sku, tenSp, slg, tongTien, tinhTrang });
       });
     }
 
-    return Array.from(map.values()).sort((a, b) => b.tong_tien_po - a.tong_tien_po || b.so_po - a.so_po);
-  }, [xnkMauData, xnkDonHangData]);
+    return Array.from(map.values()).sort((a, b) => b.tong_tien_po - a.tong_tien_po || b.so_po - a.so_po || a.name.localeCompare(b.name));
+  }, [usersData, xnkStatsByNcc, xnkMauData, xnkDonHangData]);
 
   // Filtered List
   const filteredList = useMemo(() => {
@@ -148,9 +218,8 @@ export function XnkNccModule({ onNavigate }) {
 
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
-        const matchName = matchesSearch(item.ten_ncc, q);
-        const matchContact = matchesSearch(item.lien_he, q);
-        if (!matchName && !matchContact) return false;
+        const text = `${item.id || ''} ${item.name || ''} ${item.contact || ''} ${item.type || ''}`;
+        if (!matchesSearch(text, q)) return false;
       }
 
       return true;
@@ -175,17 +244,74 @@ export function XnkNccModule({ onNavigate }) {
     return { totalNcc, nccWithPo, totalSamples, passRate, totalOrderValue };
   }, [nccList]);
 
+  // Save NCC handler (uses upsertUser into DSNV)
+  const handleSaveNcc = async (userData) => {
+    try {
+      await upsertUser(userData);
+      await fetchUsersData();
+      alert('Đã lưu thông tin Nhà Cung Cấp thành công!');
+    } catch (err) {
+      alert('Lỗi khi lưu Nhà Cung Cấp: ' + err.message);
+    }
+  };
+
+  // Delete NCC handler (uses deleteUser from DSNV)
+  const handleDeleteNcc = async (ncc) => {
+    if (!ncc.sheetRow) {
+      alert('Nhà cung cấp này được phát hiện từ lịch sử đơn hàng/mẫu thử, chưa được lưu trong danh bạ đối tác.');
+      return;
+    }
+    if (window.confirm(`Bạn có chắc chắn muốn xóa Nhà Cung Cấp: ${ncc.id} - ${ncc.name}?`)) {
+      try {
+        await deleteUser(ncc.sheetRow);
+        await fetchUsersData();
+        alert('Đã xóa Nhà Cung Cấp thành công.');
+      } catch (err) {
+        alert('Lỗi khi xóa Nhà Cung Cấp: ' + err.message);
+      }
+    }
+  };
+
+  // Import Excel handler (matching KhachhangModule)
+  const handleImportExcelRows = async (excelRows) => {
+    try {
+      const dataRows = excelRows.slice(1);
+      let count = 0;
+      for (const row of dataRows) {
+        if (row[0] || row[1]) {
+          await upsertUser({
+            id: (row[0] || '').toString().trim() || `NCC${Date.now()}`,
+            name: (row[1] || '').toString().trim(),
+            image: (row[2] || '').toString().trim(), // Contact / Wechat
+            gender: (row[3] || '').toString().trim(), // Notes
+            birthDate: '',
+            role: 'NCC',
+            password: '',
+            type: (row[7] || row[2] || 'KHÁCH HÀNG NCC').toString().trim()
+          });
+          count++;
+        }
+      }
+      await fetchUsersData();
+      alert(`Đã nhập thành công ${count} Nhà Cung Cấp vào hệ thống.`);
+    } catch (err) {
+      alert('Lỗi khi import Excel: ' + err.message);
+    }
+  };
+
+  // Export Excel handler
   const handleExportExcel = () => {
-    const headers = ['Tên nhà cung cấp / Xưởng', 'Thông tin liên hệ / Wechat', 'Số mẫu đã đặt', 'Số mẫu đạt', 'Số đơn hàng PO', 'Tổng giá trị PO (VNĐ)'];
+    const headers = ['Mã NCC', 'Tên nhà cung cấp / Xưởng', 'Phân loại', 'Liên hệ / Wechat / SĐT', 'Số mẫu thử', 'Số đơn PO', 'Tổng giá trị PO (VNĐ)'];
     const rows = filteredList.map(n => [
-      n.ten_ncc,
-      n.lien_he,
+      n.id,
+      n.name,
+      n.type,
+      n.contact,
       n.so_mau,
-      n.so_mau_dat,
       n.so_po,
       n.tong_tien_po
     ]);
-    exportToExcel([headers, ...rows], 'XNK_DANH_SACH_NCC.xlsx', 'DANH_SACH_NCC');
+    exportToExcel([headers, ...rows], `XNK_DANH_SACH_NCC_${Date.now()}.xlsx`, 'DANH_SACH_NCC');
   };
 
   const isLoading = loadingModules.xnk || loadingModules.xnk_mau || loadingModules.xnk_donhang;
@@ -225,7 +351,7 @@ export function XnkNccModule({ onNavigate }) {
         </div>
       </div>
 
-      {/* 2. Control Toolbar (matching Screenshot 2: [Quay lại], Search, Filters, Actions) */}
+      {/* 2. Control Toolbar (matching Screenshot 2 & KhachhangModule) */}
       <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
         <div className="flex flex-wrap items-center gap-2">
           {/* Nút Quay lại về Hub XNK */}
@@ -243,14 +369,14 @@ export function XnkNccModule({ onNavigate }) {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Tìm NCC, người liên hệ, Wechat..."
+              placeholder="Tìm NCC, mã ID, người liên hệ, Wechat..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
 
-          {/* Bộ lọc loại hợp tác */}
+          {/* Bộ lọc tình trạng hợp tác */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -263,29 +389,67 @@ export function XnkNccModule({ onNavigate }) {
           </select>
         </div>
 
-        {/* Right Actions */}
-        <div className="flex items-center gap-2">
+        {/* Action Buttons: Thêm NCC, Nhập Excel, Xuất Excel, Mẫu Excel, Làm mới */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Nút Thêm mới Nhà Cung Cấp */}
           <button
-            onClick={() => fetchModule('xnk', true)}
+            onClick={() => {
+              setEditUser(null);
+              setIsDrawerOpen(true);
+            }}
+            className="px-3 py-1.5 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+            title="Thêm nhà cung cấp mới"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Thêm NCC</span>
+          </button>
+
+          {/* Nút Nhập Excel */}
+          <button
+            onClick={() => setIsExcelModalOpen(true)}
+            className="px-2.5 py-1.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-200 transition flex items-center gap-1.5 cursor-pointer"
+            title="Nhập danh sách NCC từ file Excel"
+          >
+            <Upload className="w-3.5 h-3.5 text-slate-600" />
+            <span>Nhập Excel</span>
+          </button>
+
+          {/* Nút Xuất Excel */}
+          <button
+            onClick={handleExportExcel}
+            className="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 font-bold rounded-xl text-xs hover:bg-emerald-100 border border-emerald-200 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            title="Xuất Excel danh sách NCC"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Xuất Excel</span>
+          </button>
+
+          {/* Nút Mẫu Excel */}
+          <button
+            onClick={() => downloadModuleTemplate('xnk_ncc')}
+            className="px-2.5 py-1.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer"
+            title="Tải file mẫu Excel NCC"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
+            <span>Mẫu Excel</span>
+          </button>
+
+          {/* Nút Làm mới */}
+          <button
+            onClick={() => {
+              fetchUsersData();
+              fetchModule('xnk', true);
+            }}
             disabled={isLoading}
             className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
             title="Làm mới dữ liệu từ Google Sheets"
           >
             <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
-
-          <button
-            onClick={handleExportExcel}
-            className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-            title="Xuất Excel danh sách NCC"
-          >
-            <Download className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Xuất Excel</span>
-          </button>
         </div>
       </div>
 
-      {/* 3. Sub-Tab: THỐNG KÊ (KPI Cards & Overview) */}
+      {/* 3. Sub-Tab: THỐNG KÊ (KPI Cards) */}
       {activeSubTab === 'STATS' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -330,54 +494,75 @@ export function XnkNccModule({ onNavigate }) {
         </div>
       )}
 
-      {/* 4. Sub-Tab: DANH SÁCH BẢNG NCC */}
+      {/* 4. Sub-Tab: DANH SÁCH BẢNG NCC (Matching KhachhangModule) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 select-none">
-                <th className="py-2.5 px-3 whitespace-nowrap">STT</th>
-                <th className="py-2.5 px-3 min-w-[200px]">Tên nhà cung cấp / Xưởng</th>
-                <th className="py-2.5 px-3 min-w-[180px]">Người liên hệ / Wechat / SĐT</th>
-                <th className="py-2.5 px-3 text-center whitespace-nowrap">Mẫu thử nghiệm</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Mã NCC</th>
+                <th className="py-2.5 px-3 min-w-[200px]">Tên Nhà Cung Cấp / Xưởng</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Phân loại</th>
+                <th className="py-2.5 px-3 min-w-[170px]">Liên hệ / Wechat / SĐT</th>
+                <th className="py-2.5 px-3 text-center whitespace-nowrap">Mẫu thử</th>
                 <th className="py-2.5 px-3 text-center whitespace-nowrap">Đơn hàng PO</th>
-                <th className="py-2.5 px-3 text-right whitespace-nowrap">Tổng giá trị đơn hàng</th>
-                <th className="py-2.5 px-3 text-center whitespace-nowrap">Tình trạng hợp tác</th>
-                <th className="py-2.5 px-3 text-center whitespace-nowrap">Hành động</th>
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">Tổng giá trị PO</th>
+                <th className="py-2.5 px-3 text-center whitespace-nowrap">Tài khoản Web</th>
+                <th className="py-2.5 px-3 text-center whitespace-nowrap">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedList.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    <Building2 className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                    Không tìm thấy nhà cung cấp nào phù hợp
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <Building2 className="w-12 h-12 mx-auto text-slate-300 mb-2" />
+                    <p className="font-semibold text-slate-600">Chưa có Nhà Cung Cấp nào trong danh mục</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Bấm nút "Thêm NCC" để tạo mới hoặc "Nhập Excel" để nhập hàng loạt đối tác xưởng.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setEditUser(null);
+                        setIsDrawerOpen(true);
+                      }}
+                      className="mt-3 px-4 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition cursor-pointer shadow-xs"
+                    >
+                      + Thêm Nhà Cung Cấp ngay
+                    </button>
                   </td>
                 </tr>
               ) : (
-                paginatedList.map((item, index) => {
-                  const stt = (currentPage - 1) * itemsPerPage + index + 1;
-                  const hasPo = item.so_po > 0;
-                  const hasPassSample = item.so_mau_dat > 0;
-
+                paginatedList.map((item) => {
                   return (
-                    <tr key={item.ten_ncc} className="hover:bg-slate-50/70 transition">
-                      <td className="py-2.5 px-3 text-slate-400 font-medium text-center whitespace-nowrap">
-                        {stt}
+                    <tr key={item.id + item.name} className="hover:bg-slate-50/70 transition">
+                      <td className="py-2.5 px-3 font-extrabold text-blue-700 whitespace-nowrap">
+                        {item.id}
                       </td>
-                      <td className="py-2.5 px-3 font-bold text-slate-800">
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                             <Building2 className="w-4 h-4" />
                           </div>
-                          <span className="text-slate-900 font-semibold">{item.ten_ncc}</span>
+                          <div>
+                            <span className="text-slate-900 font-bold block">{item.name}</span>
+                            {item.note && (
+                              <span className="text-[11px] text-slate-400 font-normal block truncate max-w-[200px]" title={item.note}>
+                                {item.note}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {item.type || 'KHÁCH HÀNG NCC'}
+                        </span>
+                      </td>
                       <td className="py-2.5 px-3 text-slate-600">
-                        {item.lien_he ? (
+                        {item.contact ? (
                           <div className="flex items-center gap-1.5">
                             <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="font-medium text-slate-700">{item.lien_he}</span>
+                            <span className="font-medium text-slate-700">{item.contact}</span>
                           </div>
                         ) : (
                           <span className="text-slate-400 italic">Chưa có liên hệ</span>
@@ -385,63 +570,71 @@ export function XnkNccModule({ onNavigate }) {
                       </td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         {item.so_mau > 0 ? (
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[11px]">
+                          <button
+                            onClick={() => onNavigate('xnk_mau')}
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-semibold text-[11px] transition cursor-pointer"
+                            title="Bấm để xem các mẫu của NCC này"
+                          >
                             <span>{item.so_mau} mẫu</span>
                             {item.so_mau_dat > 0 && (
                               <span className="text-emerald-600 font-bold">({item.so_mau_dat} Đạt)</span>
                             )}
-                          </div>
+                          </button>
                         ) : (
                           <span className="text-slate-400 italic">-</span>
                         )}
                       </td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         {item.so_po > 0 ? (
-                          <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[11px]">
+                          <button
+                            onClick={() => onNavigate('xnk_donhang')}
+                            className="px-2.5 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] transition cursor-pointer"
+                            title="Bấm để xem các đơn PO của NCC này"
+                          >
                             {item.so_po} đơn PO
-                          </span>
+                          </button>
                         ) : (
-                          <span className="text-slate-400 italic">Chưa có PO</span>
+                          <span className="text-slate-400 italic">-</span>
                         )}
                       </td>
                       <td className="py-2.5 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
                         {item.tong_tien_po > 0 ? formatCurrency(item.tong_tien_po) : '-'}
                       </td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        {hasPo ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                            <CheckCircle2 className="w-3 h-3" /> Đang hợp tác PO
-                          </span>
-                        ) : hasPassSample ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
-                            <Award className="w-3 h-3" /> Mẫu đạt chuẩn
-                          </span>
+                        {item.password ? (
+                          <span className="text-emerald-600 font-semibold text-[11px]">Đã cấp quyền</span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">
-                            Thử mẫu ban đầu
-                          </span>
+                          <span className="text-slate-400 text-[11px]">Chưa cấp</span>
                         )}
                       </td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {item.so_mau > 0 && (
-                            <button
-                              onClick={() => onNavigate('xnk_mau')}
-                              className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] inline-flex items-center gap-1 transition cursor-pointer"
-                              title="Xem các mẫu thử của NCC này"
-                            >
-                              <PackageSearch className="w-3 h-3" /> Xem mẫu
-                            </button>
-                          )}
-                          {item.so_po > 0 && (
-                            <button
-                              onClick={() => onNavigate('xnk_donhang')}
-                              className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] inline-flex items-center gap-1 transition cursor-pointer"
-                              title="Xem các đơn hàng PO của NCC này"
-                            >
-                              <ShoppingCart className="w-3 h-3" /> Xem PO
-                            </button>
-                          )}
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => {
+                              setEditUser({
+                                sheetRow: item.sheetRow,
+                                id: item.id,
+                                name: item.name,
+                                contact: item.contact,
+                                note: item.note,
+                                type: item.type,
+                                password: item.password
+                              });
+                              setIsDrawerOpen(true);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                            title="Sửa thông tin NCC"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteNcc(item)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            title="Xóa NCC"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -464,6 +657,26 @@ export function XnkNccModule({ onNavigate }) {
           />
         </div>
       </div>
+
+      {/* Drawer Thêm / Sửa NCC */}
+      <XnkNccDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => {
+          setIsDrawerOpen(false);
+          setEditUser(null);
+        }}
+        editUser={editUser}
+        onSaved={handleSaveNcc}
+      />
+
+      {/* Modal Upload Excel */}
+      <ExcelUploadModal
+        isOpen={isExcelModalOpen}
+        onClose={() => setIsExcelModalOpen(false)}
+        moduleName="xnk_ncc"
+        expectedColumns={['id', 'ho_ten', 'hinh_anh', 'gioi_tinh', 'ngay_sinh', 'quyen', 'mk', 'truong']}
+        onImportRows={handleImportExcelRows}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from '../../common/Drawer';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 const XEP_HANG_OPTIONS = [
+  '',
   'Đạt',
   'Cần cải tiến thêm',
   'Không đạt'
@@ -41,8 +42,8 @@ export function XnkMauDrawer({
   onSaved,
   onCreateOrderFromSample 
 }) {
-  const { currentUser, hasActionPermission } = useAuth();
-  const { appendRow, updateRow, logAuditAction } = useData();
+  const { currentUser, hasActionPermission, usersData } = useAuth();
+  const { appendRow, updateRow, logAuditAction, xnkMauData, xnkDonHangData } = useData();
 
   const [idMau, setIdMau] = useState('');
   const [idYtuong, setIdYtuong] = useState('');
@@ -53,7 +54,7 @@ export function XnkMauDrawer({
   const [ngayNhanMau, setNgayNhanMau] = useState('');
   const [linkAnhMau, setLinkAnhMau] = useState('');
   const [danhGiaCaiTien, setDanhGiaCaiTien] = useState('');
-  const [danhGiaXepHang, setDanhGiaXepHang] = useState('Đạt');
+  const [danhGiaXepHang, setDanhGiaXepHang] = useState('');
   const [trangThaiDuyet, setTrangThaiDuyet] = useState('Chờ duyệt');
   const [ghiChu, setGhiChu] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -63,6 +64,57 @@ export function XnkMauDrawer({
 
   // Load selected idea info
   const selectedIdea = ytuongList.find(y => (y.id_y_tuong || '') === idYtuong);
+
+  // Compute NCC list from DSNV & XNK sheets
+  const nccOptions = useMemo(() => {
+    const map = new Map();
+
+    // 1. From DSNV (usersData)
+    (usersData || []).forEach(u => {
+      const typeStr = (u.type || '').toString().trim().toUpperCase();
+      const roleStr = (u.role || '').toString().trim().toUpperCase();
+      if (typeStr.includes('NCC') || typeStr.includes('NHÀ CUNG CẤP') || typeStr.includes('XƯỞNG') || roleStr === 'NCC') {
+        const name = (u.name || '').trim();
+        if (name && !map.has(name.toLowerCase())) {
+          map.set(name.toLowerCase(), {
+            id: u.id,
+            name: name,
+            contact: u.image || ''
+          });
+        }
+      }
+    });
+
+    // 2. From Samples
+    if (xnkMauData && xnkMauData.length > 1) {
+      xnkMauData.slice(1).forEach(r => {
+        const name = (r[2] || '').trim();
+        if (name && !map.has(name.toLowerCase())) {
+          map.set(name.toLowerCase(), {
+            id: '',
+            name: name,
+            contact: (r[3] || '').trim()
+          });
+        }
+      });
+    }
+
+    // 3. From PO Orders
+    if (xnkDonHangData && xnkDonHangData.length > 1) {
+      xnkDonHangData.slice(1).forEach(r => {
+        const name = (r[4] || '').trim();
+        if (name && !map.has(name.toLowerCase())) {
+          map.set(name.toLowerCase(), {
+            id: '',
+            name: name,
+            contact: ''
+          });
+        }
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [usersData, xnkMauData, xnkDonHangData]);
 
   useEffect(() => {
     if (editItem) {
@@ -75,7 +127,7 @@ export function XnkMauDrawer({
       setNgayNhanMau(editItem.ngay_nhan_mau ? formatDateInput(editItem.ngay_nhan_mau) : '');
       setLinkAnhMau(editItem.link_anh_mau || '');
       setDanhGiaCaiTien(editItem.danh_gia_cai_tien || '');
-      setDanhGiaXepHang(editItem.danh_gia_xep_hang || 'Đạt');
+      setDanhGiaXepHang(editItem.danh_gia_xep_hang || '');
       setTrangThaiDuyet(editItem.trang_thai_duyet || 'Chờ duyệt');
       setGhiChu(editItem.ghi_chu || '');
     } else {
@@ -90,7 +142,7 @@ export function XnkMauDrawer({
       setNgayNhanMau('');
       setLinkAnhMau('');
       setDanhGiaCaiTien('');
-      setDanhGiaXepHang('Đạt');
+      setDanhGiaXepHang(''); // Để trống khi tạo mới
       setTrangThaiDuyet('Chờ duyệt');
       setGhiChu('');
     }
@@ -239,20 +291,58 @@ export function XnkMauDrawer({
         )}
 
         {/* Tên NCC & Liên hệ */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Tên Nhà cung cấp / Xưởng <span className="text-rose-500">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700">
+                Tên Nhà cung cấp / Xưởng <span className="text-rose-500">*</span>
+              </label>
+              {nccOptions.length > 0 && (
+                <span className="text-[10px] text-blue-600 font-semibold">
+                  {nccOptions.length} NCC trong DS
+                </span>
+              )}
+            </div>
+
+            {/* Dropdown chọn NCC từ danh sách */}
+            <select
+              value={nccOptions.some(n => n.name === tenNcc) ? tenNcc : (tenNcc ? '__CUSTOM__' : '')}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '__CUSTOM__') {
+                  setTenNcc('');
+                } else if (val) {
+                  setTenNcc(val);
+                  const selectedNcc = nccOptions.find(n => n.name === val);
+                  if (selectedNcc?.contact && !lienHeNcc) {
+                    setLienHeNcc(selectedNcc.contact);
+                  }
+                } else {
+                  setTenNcc('');
+                }
+              }}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none mb-1.5"
+            >
+              <option value="">-- Chọn NCC từ danh sách ({nccOptions.length} NCC) --</option>
+              {nccOptions.map(n => (
+                <option key={n.name} value={n.name}>
+                  🏢 {n.name} {n.contact ? `(Liên hệ: ${n.contact})` : ''}
+                </option>
+              ))}
+              <option value="__CUSTOM__">✍️ Tự nhập nhà cung cấp / xưởng khác...</option>
+            </select>
+
+            {/* Ô input tên NCC */}
             <input
               type="text"
               value={tenNcc}
               onChange={(e) => setTenNcc(e.target.value)}
-              placeholder="VD: Xưởng Phật Sơn A, Wechat..."
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              placeholder="Nhập hoặc kiểm tra tên nhà cung cấp..."
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
               required
             />
           </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Liên hệ NCC (SĐT / Wechat / Link)
@@ -374,12 +464,15 @@ export function XnkMauDrawer({
                     ? 'bg-emerald-50 border-emerald-300 text-emerald-800' 
                     : danhGiaXepHang === 'Không đạt'
                     ? 'bg-rose-50 border-rose-300 text-rose-800'
-                    : 'bg-amber-50 border-amber-300 text-amber-800'
+                    : danhGiaXepHang === 'Cần cải tiến thêm'
+                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                    : 'bg-white border-slate-200 text-slate-500'
                 }`}
               >
-                {XEP_HANG_OPTIONS.map(opt => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
+                <option value="">-- Để trống (Chưa đánh giá) --</option>
+                <option value="Đạt">Đạt</option>
+                <option value="Cần cải tiến thêm">Cần cải tiến thêm</option>
+                <option value="Không đạt">Không đạt</option>
               </select>
             </div>
 

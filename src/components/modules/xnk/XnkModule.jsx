@@ -130,7 +130,7 @@ export function XnkModule({ onNavigate }) {
       ngay_nhan_mau: row[6] || '',
       link_anh_mau: row[7] || '',
       danh_gia_cai_tien: row[8] || '',
-      danh_gia_xep_hang: row[9] || 'Đạt',
+      danh_gia_xep_hang: row[9] || '',
       trang_thai_duyet: row[10] || 'Chờ duyệt',
       ghi_chu: row[11] || ''
     })).filter(item => item.id_mau || item.ten_ncc);
@@ -773,15 +773,23 @@ export function XnkModule({ onNavigate }) {
                           </div>
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                            item.danh_gia_xep_hang === 'Đạt'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : item.danh_gia_xep_hang === 'Không đạt'
-                              ? 'bg-rose-100 text-rose-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {item.danh_gia_xep_hang}
-                          </span>
+                          {item.danh_gia_xep_hang === 'Đạt' ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                              Đạt
+                            </span>
+                          ) : item.danh_gia_xep_hang === 'Không đạt' ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
+                              Không đạt
+                            </span>
+                          ) : item.danh_gia_xep_hang === 'Cần cải tiến thêm' ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+                              Cần cải tiến
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500">
+                              Chưa đánh giá
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${

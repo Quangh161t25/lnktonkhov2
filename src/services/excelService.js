@@ -50,10 +50,10 @@ export function downloadModuleTemplate(moduleName) {
     sampleRows = [
       ['NV001', 'Nguyễn Văn A', '', 'Nam', '1990-01-01', 'KHO', '123456', 'NHÂN VIÊN']
     ];
-  } else if (moduleName === 'khachhang') {
+  } else if (moduleName === 'khachhang' || moduleName === 'xnk_ncc') {
     headers = ['id', 'ho_ten', 'hinh_anh', 'gioi_tinh', 'ngay_sinh', 'quyen', 'mk', 'truong'];
     sampleRows = [
-      ['KH001', 'Đại lý Miền Bắc', '', '', '', 'NPP', '', 'KHÁCH HÀNG NPP']
+      ['NCC001', 'Xưởng Phật Sơn A', '0912345678 (Wechat: phatson_a)', '', '', 'NCC', '', 'KHÁCH HÀNG NCC']
     ];
   }
 
