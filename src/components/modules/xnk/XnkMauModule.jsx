@@ -50,6 +50,7 @@ export function XnkMauModule({ onNavigate }) {
   const { 
     xnkYtuongData, 
     xnkMauData, 
+    xnkDonHangData,
     fetchModule, 
     deleteRow,
     loadingModules 
@@ -142,6 +143,49 @@ export function XnkMauModule({ onNavigate }) {
     })).filter(i => i.id_mau || i.ten_ncc);
   }, [xnkMauData]);
 
+  // Parsed Đơn hàng PO để kiểm tra liên kết
+  const donHangList = useMemo(() => {
+    if (!xnkDonHangData || xnkDonHangData.length <= 1) return [];
+    return xnkDonHangData.slice(1).map((r, idx) => ({
+      _sheetRow: idx + 2,
+      ma_po: (r[0] || '').toString().trim(),
+      id_mau: (r[1] || '').toString().trim(),
+      sku: (r[2] || '').toString().trim(),
+      ten_sp: (r[3] || '').toString().trim(),
+      ten_ncc: (r[4] || '').toString().trim()
+    })).filter(o => o.ma_po || o.ten_sp);
+  }, [xnkDonHangData]);
+
+  // Bản đồ các đơn hàng PO đã liên kết với từng mẫu thử (để khóa không cho xóa khi đã lên đơn hàng PO)
+  const sampleLinkedOrdersMap = useMemo(() => {
+    const map = {};
+    if (!mauList.length || !donHangList.length) return map;
+
+    mauList.forEach(sample => {
+      const sampleId = (sample.id_mau || '').trim().toLowerCase();
+      const relatedIdea = ytuongMap[sample.id_y_tuong];
+      const ideaSku = (relatedIdea?.sku_du_kien || '').trim().toLowerCase();
+      const ideaName = (relatedIdea?.ten_sp || '').trim().toLowerCase();
+
+      const linked = donHangList.filter(o => {
+        const oMau = (o.id_mau || '').trim().toLowerCase();
+        const oSku = (o.sku || '').trim().toLowerCase();
+        const oName = (o.ten_sp || '').trim().toLowerCase();
+
+        // 1. Khớp trực tiếp mã mẫu
+        if (sampleId && oMau && oMau === sampleId) return true;
+        // 2. Đơn PO không điền id_mau nhưng khớp SKU / Tên SP của ý tưởng liên kết
+        if (!oMau && ideaSku && oSku === ideaSku) return true;
+        if (!oMau && ideaName && oName === ideaName) return true;
+        return false;
+      });
+
+      map[sample.id_mau || sample._sheetRow] = linked;
+    });
+
+    return map;
+  }, [mauList, donHangList, ytuongMap]);
+
   // Distinct NCC options
   const nccOptions = useMemo(() => {
     const set = new Set();
@@ -202,10 +246,16 @@ export function XnkMauModule({ onNavigate }) {
     exportToExcel([headers, ...rows], 'XNK_MAU_THU.xlsx', 'MAU_THU');
   };
 
-  const handleDelete = async (sheetRow, idMau) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa mẫu thử [${idMau}]?`)) return;
+  const handleDelete = async (item) => {
+    const linked = sampleLinkedOrdersMap[item.id_mau || item._sheetRow] || [];
+    if (linked.length > 0) {
+      const poCodes = linked.map(o => o.ma_po).filter(Boolean).join(', ') || 'đơn hàng PO';
+      alert(`Không thể xóa mẫu thử [${item.id_mau}] vì đã được lên đơn hàng PO (${poCodes}). Vui lòng xóa đơn hàng PO trước nếu muốn xóa mẫu này!`);
+      return;
+    }
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa mẫu thử [${item.id_mau}]?`)) return;
     try {
-      await deleteRow('xnk_mau', sheetRow);
+      await deleteRow('xnk_mau', item._sheetRow);
     } catch (err) {
       console.error('Lỗi xóa:', err);
       alert('Không thể xóa dòng dữ liệu. Vui lòng thử lại!');
@@ -610,15 +660,31 @@ export function XnkMauModule({ onNavigate }) {
                                     >
                                       <Edit3 className="w-4 h-4" />
                                     </button>
-                                    {canManage && (
-                                      <button
-                                        onClick={() => handleDelete(item._sheetRow, item.id_mau)}
-                                        title="Xóa mẫu"
-                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    )}
+                                    {canManage && (() => {
+                                      const linkedOrders = sampleLinkedOrdersMap[item.id_mau || item._sheetRow] || [];
+                                      const hasLinkedPo = linkedOrders.length > 0;
+                                      const poCodes = linkedOrders.map(o => o.ma_po).filter(Boolean).join(', ');
+
+                                      return hasLinkedPo ? (
+                                        <button
+                                          type="button"
+                                          disabled
+                                          title={`Không thể xóa: Mẫu thử này đã được lên đơn hàng PO (${poCodes || 'đơn hàng PO'})`}
+                                          className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed opacity-45"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDelete(item)}
+                                          title="Xóa mẫu"
+                                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      );
+                                    })()}
                                   </div>
                                 </td>
                               );

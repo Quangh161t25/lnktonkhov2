@@ -49,6 +49,8 @@ const DEFAULT_XNK_YTUONG_COLUMNS = [
 export function XnkYtuongModule({ onNavigate }) {
   const { 
     xnkYtuongData, 
+    xnkMauData,
+    xnkDonHangData,
     fetchModule, 
     deleteRow,
     loadingModules 
@@ -93,6 +95,8 @@ export function XnkYtuongModule({ onNavigate }) {
 
   useEffect(() => {
     fetchModule('xnk_ytuong');
+    fetchModule('xnk_mau');
+    fetchModule('xnk_donhang');
     fetchModule('sanpham');
   }, [fetchModule]);
 
@@ -117,6 +121,67 @@ export function XnkYtuongModule({ onNavigate }) {
       ghi_chu: r[9] || ''
     })).filter(i => i.id_y_tuong || i.ten_sp);
   }, [xnkYtuongData]);
+
+  // Parsed Mẫu thử để kiểm tra liên kết
+  const mauList = useMemo(() => {
+    if (!xnkMauData || xnkMauData.length <= 1) return [];
+    return xnkMauData.slice(1).map((r, idx) => ({
+      _sheetRow: idx + 2,
+      id_mau: (r[0] || '').toString().trim(),
+      id_y_tuong: (r[1] || '').toString().trim(),
+      ten_ncc: (r[2] || '').toString().trim()
+    })).filter(m => m.id_mau);
+  }, [xnkMauData]);
+
+  // Parsed Đơn hàng PO để kiểm tra liên kết
+  const donHangList = useMemo(() => {
+    if (!xnkDonHangData || xnkDonHangData.length <= 1) return [];
+    return xnkDonHangData.slice(1).map((r, idx) => ({
+      _sheetRow: idx + 2,
+      ma_po: (r[0] || '').toString().trim(),
+      id_mau: (r[1] || '').toString().trim(),
+      sku: (r[2] || '').toString().trim(),
+      ten_sp: (r[3] || '').toString().trim(),
+      ten_ncc: (r[4] || '').toString().trim()
+    })).filter(o => o.ma_po || o.ten_sp);
+  }, [xnkDonHangData]);
+
+  // Bản đồ các đơn hàng PO đã liên kết với từng ý tưởng (để khóa không cho xóa khi đã lên đơn hàng PO)
+  const ideaLinkedOrdersMap = useMemo(() => {
+    const map = {};
+    if (!ytuongList.length || !donHangList.length) return map;
+
+    ytuongList.forEach(idea => {
+      const ideaId = (idea.id_y_tuong || '').trim().toLowerCase();
+      const ideaSku = (idea.sku_du_kien || '').trim().toLowerCase();
+      const ideaName = (idea.ten_sp || '').trim().toLowerCase();
+
+      // Danh sách mã mẫu thuộc ý tưởng này
+      const sampleIds = new Set();
+      mauList.forEach(s => {
+        const sIdea = (s.id_y_tuong || '').trim().toLowerCase();
+        if ((ideaId && sIdea === ideaId) || (ideaSku && sIdea === ideaSku)) {
+          if (s.id_mau) sampleIds.add(s.id_mau.toLowerCase());
+        }
+      });
+
+      // Các đơn hàng PO phát sinh từ ý tưởng này (theo mã mẫu hoặc theo SKU hoặc theo Tên SP)
+      const linked = donHangList.filter(o => {
+        const oMau = (o.id_mau || '').trim().toLowerCase();
+        const oSku = (o.sku || '').trim().toLowerCase();
+        const oName = (o.ten_sp || '').trim().toLowerCase();
+        return (
+          (oMau && sampleIds.has(oMau)) ||
+          (ideaSku && oSku === ideaSku) ||
+          (ideaName && oName === ideaName)
+        );
+      });
+
+      map[idea.id_y_tuong || idea._sheetRow] = linked;
+    });
+
+    return map;
+  }, [ytuongList, mauList, donHangList]);
 
   // Distinct authors list for filter dropdown
   const authorOptions = useMemo(() => {
@@ -176,10 +241,16 @@ export function XnkYtuongModule({ onNavigate }) {
     exportToExcel([headers, ...rows], 'XNK_Y_TUONG.xlsx', 'Y_TUONG');
   };
 
-  const handleDelete = async (sheetRow, tenSp) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa ý tưởng [${tenSp}]?`)) return;
+  const handleDelete = async (item) => {
+    const linked = ideaLinkedOrdersMap[item.id_y_tuong || item._sheetRow] || [];
+    if (linked.length > 0) {
+      const poCodes = linked.map(o => o.ma_po).filter(Boolean).join(', ') || 'đơn hàng PO';
+      alert(`Không thể xóa ý tưởng [${item.ten_sp}] vì đã được lên đơn hàng PO (${poCodes}). Vui lòng xóa đơn hàng PO trước nếu muốn xóa ý tưởng này!`);
+      return;
+    }
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ý tưởng [${item.ten_sp}]?`)) return;
     try {
-      await deleteRow('xnk_ytuong', sheetRow);
+      await deleteRow('xnk_ytuong', item._sheetRow);
     } catch (err) {
       console.error('Lỗi xóa:', err);
       alert('Không thể xóa dòng dữ liệu. Vui lòng thử lại!');
@@ -543,15 +614,31 @@ export function XnkYtuongModule({ onNavigate }) {
                                     >
                                       <Edit3 className="w-4 h-4" />
                                     </button>
-                                    {canManage && (
-                                      <button
-                                        onClick={() => handleDelete(item._sheetRow, item.ten_sp)}
-                                        title="Xóa ý tưởng"
-                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    )}
+                                    {canManage && (() => {
+                                      const linkedOrders = ideaLinkedOrdersMap[item.id_y_tuong || item._sheetRow] || [];
+                                      const hasLinkedPo = linkedOrders.length > 0;
+                                      const poCodes = linkedOrders.map(o => o.ma_po).filter(Boolean).join(', ');
+
+                                      return hasLinkedPo ? (
+                                        <button
+                                          type="button"
+                                          disabled
+                                          title={`Không thể xóa: Ý tưởng này đã được lên đơn hàng PO (${poCodes || 'đơn hàng PO'})`}
+                                          className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed opacity-45"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDelete(item)}
+                                          title="Xóa ý tưởng"
+                                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      );
+                                    })()}
                                   </div>
                                 </td>
                               );

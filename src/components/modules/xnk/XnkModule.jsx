@@ -201,6 +201,73 @@ export function XnkModule({ onNavigate }) {
     return map;
   }, [parsedYtuongList]);
 
+  // Bản đồ đơn hàng PO liên kết với từng ý tưởng (khóa không cho xóa khi đã lên đơn hàng PO)
+  const ideaLinkedOrdersMap = useMemo(() => {
+    const map = {};
+    if (!parsedYtuongList.length || !parsedDonHangList.length) return map;
+
+    parsedYtuongList.forEach(idea => {
+      const ideaId = (idea.id_y_tuong || '').trim().toLowerCase();
+      const ideaSku = (idea.sku_du_kien || '').trim().toLowerCase();
+      const ideaName = (idea.ten_sp || '').trim().toLowerCase();
+
+      // Danh sách mã mẫu thuộc ý tưởng này
+      const sampleIds = new Set();
+      parsedMauList.forEach(s => {
+        const sIdea = (s.id_y_tuong || '').trim().toLowerCase();
+        if ((ideaId && sIdea === ideaId) || (ideaSku && sIdea === ideaSku)) {
+          if (s.id_mau) sampleIds.add(s.id_mau.toLowerCase());
+        }
+      });
+
+      // Các đơn hàng PO phát sinh từ ý tưởng này
+      const linked = parsedDonHangList.filter(o => {
+        const oMau = (o.id_mau || '').trim().toLowerCase();
+        const oSku = (o.sku || '').trim().toLowerCase();
+        const oName = (o.ten_sp || '').trim().toLowerCase();
+        return (
+          (oMau && sampleIds.has(oMau)) ||
+          (ideaSku && oSku === ideaSku) ||
+          (ideaName && oName === ideaName)
+        );
+      });
+
+      map[idea.id_y_tuong || idea._sheetRow] = linked;
+    });
+
+    return map;
+  }, [parsedYtuongList, parsedMauList, parsedDonHangList]);
+
+  // Bản đồ đơn hàng PO liên kết với từng mẫu thử (khóa không cho xóa khi đã lên đơn hàng PO)
+  const sampleLinkedOrdersMap = useMemo(() => {
+    const map = {};
+    if (!parsedMauList.length || !parsedDonHangList.length) return map;
+
+    parsedMauList.forEach(sample => {
+      const sampleId = (sample.id_mau || '').trim().toLowerCase();
+      const relatedIdea = ytuongMap[sample.id_y_tuong];
+      const ideaSku = (relatedIdea?.sku_du_kien || '').trim().toLowerCase();
+      const ideaName = (relatedIdea?.ten_sp || '').trim().toLowerCase();
+
+      const linked = parsedDonHangList.filter(o => {
+        const oMau = (o.id_mau || '').trim().toLowerCase();
+        const oSku = (o.sku || '').trim().toLowerCase();
+        const oName = (o.ten_sp || '').trim().toLowerCase();
+
+        // 1. Khớp trực tiếp mã mẫu
+        if (sampleId && oMau && oMau === sampleId) return true;
+        // 2. Đơn PO không điền id_mau nhưng khớp SKU / Tên SP của ý tưởng liên kết
+        if (!oMau && ideaSku && oSku === ideaSku) return true;
+        if (!oMau && ideaName && oName === ideaName) return true;
+        return false;
+      });
+
+      map[sample.id_mau || sample._sheetRow] = linked;
+    });
+
+    return map;
+  }, [parsedMauList, parsedDonHangList, ytuongMap]);
+
   // Unique authors & NCC options
   const authorOptions = useMemo(() => {
     const set = new Set();
@@ -399,7 +466,12 @@ export function XnkModule({ onNavigate }) {
   };
 
   // Delete Action
-  const handleDeleteRow = async (moduleSheetKey, sheetRow, identifier) => {
+  const handleDeleteRow = async (moduleSheetKey, sheetRow, identifier, linkedOrders = []) => {
+    if (linkedOrders && linkedOrders.length > 0) {
+      const poCodes = linkedOrders.map(o => o.ma_po).filter(Boolean).join(', ') || 'đơn hàng PO';
+      alert(`Không thể xóa bản ghi [${identifier}] vì đã được lên đơn hàng PO (${poCodes}). Vui lòng xóa đơn hàng PO trước nếu muốn xóa bản ghi này!`);
+      return;
+    }
     if (!window.confirm(`Bạn có chắc chắn muốn xóa bản ghi [${identifier}]?`)) return;
     try {
       await deleteRow(moduleSheetKey, sheetRow);
@@ -902,15 +974,31 @@ export function XnkModule({ onNavigate }) {
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          {canManage && (
-                            <button
-                              onClick={() => handleDeleteRow('xnk_ytuong', item._sheetRow, item.ten_sp)}
-                              title="Xóa ý tưởng"
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                          {canManage && (() => {
+                            const linkedOrders = ideaLinkedOrdersMap[item.id_y_tuong || item._sheetRow] || [];
+                            const hasLinkedPo = linkedOrders.length > 0;
+                            const poCodes = linkedOrders.map(o => o.ma_po).filter(Boolean).join(', ');
+
+                            return hasLinkedPo ? (
+                              <button
+                                type="button"
+                                disabled
+                                title={`Không thể xóa: Ý tưởng này đã được lên đơn hàng PO (${poCodes || 'đơn hàng PO'})`}
+                                className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed opacity-45"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRow('xnk_ytuong', item._sheetRow, item.ten_sp, linkedOrders)}
+                                title="Xóa ý tưởng"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -1086,15 +1174,31 @@ export function XnkModule({ onNavigate }) {
                             >
                               <Edit3 className="w-4 h-4" />
                             </button>
-                            {canManage && (
-                              <button
-                                onClick={() => handleDeleteRow('xnk_mau', item._sheetRow, item.id_mau)}
-                                title="Xóa mẫu"
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
+                            {canManage && (() => {
+                              const linkedOrders = sampleLinkedOrdersMap[item.id_mau || item._sheetRow] || [];
+                              const hasLinkedPo = linkedOrders.length > 0;
+                              const poCodes = linkedOrders.map(o => o.ma_po).filter(Boolean).join(', ');
+
+                              return hasLinkedPo ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  title={`Không thể xóa: Mẫu thử này đã được lên đơn hàng PO (${poCodes || 'đơn hàng PO'})`}
+                                  className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed opacity-45"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRow('xnk_mau', item._sheetRow, item.id_mau, linkedOrders)}
+                                  title="Xóa mẫu"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
