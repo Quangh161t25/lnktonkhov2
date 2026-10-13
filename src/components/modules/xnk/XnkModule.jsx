@@ -5,7 +5,7 @@ import { Pagination } from '../../common/Pagination';
 import { XnkYtuongDrawer } from './XnkYtuongDrawer';
 import { XnkMauDrawer } from './XnkMauDrawer';
 import { XnkDonHangDrawer } from './XnkDonHangDrawer';
-import { XnkTrackingModal } from './XnkTrackingModal';
+import { XnkTrackingModal, getPoKanbanStage } from './XnkTrackingModal';
 import { XnkChiTietModal } from './XnkChiTietModal';
 import { exportToExcel } from '../../../services/excelService';
 import { 
@@ -1294,35 +1294,35 @@ export function XnkModule({ onNavigate }) {
                 title: '1. Đặt hàng / Cọc',
                 icon: Check,
                 color: 'blue',
-                filterFn: (d) => Boolean(d.ngay_dat_hang) && !d.ngay_sx_xong
+                filterFn: (d) => getPoKanbanStage(d) === 1
               },
               {
                 id: 'stage_2',
                 title: '2. Đang sản xuất',
                 icon: Factory,
                 color: 'amber',
-                filterFn: (d) => Boolean(d.ngay_sx_xong) && !d.ngay_gui_hang
+                filterFn: (d) => getPoKanbanStage(d) === 2
               },
               {
                 id: 'stage_3',
                 title: '3. Vận chuyển QT',
                 icon: Truck,
                 color: 'cyan',
-                filterFn: (d) => Boolean(d.ngay_gui_hang) && !d.ngay_thong_quan
+                filterFn: (d) => getPoKanbanStage(d) === 3
               },
               {
                 id: 'stage_4',
                 title: '4. Đang thông quan',
                 icon: Clock,
                 color: 'indigo',
-                filterFn: (d) => Boolean(d.ngay_thong_quan) && !d.ngay_kho_nhan
+                filterFn: (d) => getPoKanbanStage(d) === 4
               },
               {
                 id: 'stage_5',
                 title: '5. Đã về kho',
                 icon: Warehouse,
                 color: 'emerald',
-                filterFn: (d) => Boolean(d.ngay_kho_nhan)
+                filterFn: (d) => getPoKanbanStage(d) === 5
               }
             ].map((col) => {
               const ColIcon = col.icon;

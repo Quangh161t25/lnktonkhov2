@@ -27,7 +27,13 @@ import {
   TrendingUp,
   AlertCircle
 } from 'lucide-react';
-import { extractTiendoMeta, buildGhiChuWithMeta } from './XnkTrackingModal';
+import { 
+  extractTiendoMeta, 
+  stripTiendoMeta, 
+  buildGhiChuWithMeta, 
+  resolvePoStageCompletion, 
+  computeStatusFromStages 
+} from './XnkTrackingModal';
 
 // Cộng trừ ngày theo múi giờ địa phương an toàn
 function addDays(dateStr, days) {
@@ -215,27 +221,18 @@ export function XnkDonHangDrawer({
     return approvedSamples.filter(s => s.id_y_tuong === idYtuong);
   }, [idYtuong, approvedSamples]);
 
-  // Tự động tính toán Trạng thái sau cùng
+  // Tự động tính toán Trạng thái sau cùng theo đúng các nút Đã xong / Chưa xong
   const autoComputedStatus = useMemo(() => {
-    if (manualStatusOverride === 'Đã hủy') return 'Đã hủy';
-    if (stage6Done) return 'Đã hoàn thành';
-    if (stage5Done || Boolean(ngayKhoNhan && new Date(ngayKhoNhan) <= new Date()) || (slgThucNhan !== '' && Number(slgThucNhan) > 0)) {
-      return 'Đã về kho';
-    }
-    if (stage4Done || Boolean(ngayThongQuan && new Date(ngayThongQuan) <= new Date())) {
-      return 'Đang thông quan';
-    }
-    if (stage3Done || Boolean(trackingVanChuyen) || Boolean(ngayDenCang && new Date(ngayDenCang) <= new Date())) {
-      return 'Đang vận chuyển';
-    }
-    if (stage2Done || Boolean(ngaySxXong && new Date(ngaySxXong) <= new Date())) {
-      return 'Đang sản xuất';
-    }
-    if (stage1Done || Boolean(ngayDatHang)) {
-      return 'Đã đặt cọc';
-    }
-    return 'Chờ sản xuất';
-  }, [stage6Done, stage5Done, stage4Done, stage3Done, stage2Done, stage1Done, ngayKhoNhan, slgThucNhan, ngayThongQuan, trackingVanChuyen, ngayDenCang, ngaySxXong, ngayDatHang, manualStatusOverride]);
+    return computeStatusFromStages({
+      s1: stage1Done,
+      s2: stage2Done,
+      s3: stage3Done,
+      s4: stage4Done,
+      s5: stage5Done,
+      s6: stage6Done,
+      isCancelled: manualStatusOverride === 'Đã hủy'
+    });
+  }, [stage6Done, stage5Done, stage4Done, stage3Done, stage2Done, stage1Done, manualStatusOverride]);
 
   // Khởi tạo form khi mở Drawer
   useEffect(() => {
@@ -251,6 +248,7 @@ export function XnkDonHangDrawer({
       
       // Ngày & Tiến độ
       const meta = extractTiendoMeta(editItem.ghi_chu);
+      const resolvedStages = resolvePoStageCompletion(editItem);
       const dtStart1 = editItem.ngay_dat_hang ? formatDateInput(editItem.ngay_dat_hang) : formatDateInput(new Date());
       setNgayDatHang(dtStart1);
       
@@ -259,7 +257,7 @@ export function XnkDonHangDrawer({
       setDaysStage1(d1);
       const end1 = meta.coc ? formatDateInput(meta.coc) : addDays(dtStart1, d1);
       setNgayCocXong(end1);
-      setStage1Done(meta.s1 !== undefined ? meta.s1 === '1' : Boolean(dtStart1));
+      setStage1Done(resolvedStages.s1);
 
       // Chặng 2
       const dtSx = editItem.ngay_sx_xong ? formatDateInput(editItem.ngay_sx_xong) : '';
@@ -267,7 +265,7 @@ export function XnkDonHangDrawer({
       setDaysStage2(d2);
       const end2 = dtSx || addDays(end1, d2);
       setNgaySxXong(end2);
-      setStage2Done(meta.s2 !== undefined ? meta.s2 === '1' : Boolean(dtSx));
+      setStage2Done(resolvedStages.s2);
 
       // Chặng 3
       setTrackingVanChuyen(editItem.tracking_van_chuyen || '');
@@ -277,7 +275,7 @@ export function XnkDonHangDrawer({
         ? formatDateInput(meta.cang)
         : (editItem.ngay_gui_hang && editItem.ngay_gui_hang !== dtSx ? formatDateInput(editItem.ngay_gui_hang) : addDays(end2, d3));
       setNgayDenCang(dtDenCang);
-      setStage3Done(meta.s3 !== undefined ? meta.s3 === '1' : Boolean(editItem.tracking_van_chuyen || editItem.ngay_gui_hang));
+      setStage3Done(resolvedStages.s3);
 
       // Chặng 4
       const dtTq = editItem.ngay_thong_quan ? formatDateInput(editItem.ngay_thong_quan) : '';
@@ -285,7 +283,7 @@ export function XnkDonHangDrawer({
       setDaysStage4(d4);
       const end4 = dtTq || addDays(dtDenCang, d4);
       setNgayThongQuan(end4);
-      setStage4Done(meta.s4 !== undefined ? meta.s4 === '1' : Boolean(dtTq));
+      setStage4Done(resolvedStages.s4);
 
       // Chặng 5
       const dtKho = editItem.ngay_kho_nhan ? formatDateInput(editItem.ngay_kho_nhan) : '';
@@ -294,7 +292,7 @@ export function XnkDonHangDrawer({
       const end5 = dtKho || addDays(end4, d5);
       setNgayKhoNhan(end5);
       setSlgThucNhan(editItem.slg_thuc_nhan !== undefined && editItem.slg_thuc_nhan !== '' ? editItem.slg_thuc_nhan : '');
-      setStage5Done(meta.s5 !== undefined ? meta.s5 === '1' : Boolean(dtKho));
+      setStage5Done(resolvedStages.s5);
 
       // Chặng 6: Kế hoạch bán
       const rawKeHoach = editItem.ke_hoach_ban || 'Bán ngay';
@@ -312,7 +310,7 @@ export function XnkDonHangDrawer({
       const d6 = calcDurationDays(end5, dtBan);
       setDaysStage6(d6);
       setNgayKeHoachBan(dtBan);
-      setStage6Done(meta.s6 !== undefined ? meta.s6 === '1' : Boolean(rawKeHoach && dtKho && new Date() >= new Date(dtBan)));
+      setStage6Done(resolvedStages.s6);
 
       // Tra cứu ý tưởng từ mẫu
       const matchingSample = approvedSamples.find(s => s.id_mau === editItem.id_mau);
@@ -324,7 +322,7 @@ export function XnkDonHangDrawer({
       }
 
       setManualStatusOverride(editItem.tinh_trang_cuoi === 'Đã hủy' ? 'Đã hủy' : '');
-      setGhiChu(editItem.ghi_chu || '');
+      setGhiChu(stripTiendoMeta(editItem.ghi_chu));
     } else {
       // Đơn mới
       const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -604,6 +602,36 @@ export function XnkDonHangDrawer({
       const d = daysStage6 > 0 ? daysStage6 : 7;
       setDaysStage6(d);
       setNgayKeHoachBan(addDays(ngayKhoNhan, d));
+    }
+  };
+
+  const handleToggleStage = (stageNum) => {
+    const currentMap = {
+      1: stage1Done,
+      2: stage2Done,
+      3: stage3Done,
+      4: stage4Done,
+      5: stage5Done,
+      6: stage6Done
+    };
+    const next = !currentMap[stageNum];
+    if (next) {
+      if (stageNum >= 1) setStage1Done(true);
+      if (stageNum >= 2) setStage2Done(true);
+      if (stageNum >= 3) setStage3Done(true);
+      if (stageNum >= 4) setStage4Done(true);
+      if (stageNum >= 5) {
+        setStage5Done(true);
+        if (!slgThucNhan) setSlgThucNhan(soLuong || '');
+      }
+      if (stageNum >= 6) setStage6Done(true);
+    } else {
+      if (stageNum <= 1) setStage1Done(false);
+      if (stageNum <= 2) setStage2Done(false);
+      if (stageNum <= 3) setStage3Done(false);
+      if (stageNum <= 4) setStage4Done(false);
+      if (stageNum <= 5) setStage5Done(false);
+      if (stageNum <= 6) setStage6Done(false);
     }
   };
 
@@ -1086,7 +1114,7 @@ export function XnkDonHangDrawer({
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setStage1Done(!stage1Done)}
+                        onClick={() => handleToggleStage(1)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
                           stage1Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                         }`}
@@ -1147,7 +1175,7 @@ export function XnkDonHangDrawer({
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setStage2Done(!stage2Done)}
+                        onClick={() => handleToggleStage(2)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
                           stage2Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                         }`}
@@ -1207,7 +1235,7 @@ export function XnkDonHangDrawer({
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setStage3Done(!stage3Done)}
+                        onClick={() => handleToggleStage(3)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
                           stage3Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                         }`}
@@ -1267,7 +1295,7 @@ export function XnkDonHangDrawer({
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setStage4Done(!stage4Done)}
+                        onClick={() => handleToggleStage(4)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
                           stage4Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                         }`}
@@ -1327,7 +1355,7 @@ export function XnkDonHangDrawer({
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setStage5Done(!stage5Done)}
+                        onClick={() => handleToggleStage(5)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
                           stage5Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                         }`}
@@ -1389,7 +1417,7 @@ export function XnkDonHangDrawer({
                     <td className="py-2.5 px-3 text-center">
                       <button
                         type="button"
-                        onClick={() => setStage6Done(!stage6Done)}
+                        onClick={() => handleToggleStage(6)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
                           stage6Done ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                         }`}

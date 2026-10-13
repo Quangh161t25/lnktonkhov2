@@ -72,7 +72,7 @@ function calcDurationDays(startDate, endDate) {
 
 export function extractTiendoMeta(ghiChu) {
   if (!ghiChu) return {};
-  const match = (ghiChu || '').match(/\[tiendo:([^\]]+)\]/);
+  const match = String(ghiChu).match(/\[tiendo:([^\]]+)\]/);
   if (!match) return {};
   const pairs = match[1].split(';');
   const meta = {};
@@ -83,13 +83,97 @@ export function extractTiendoMeta(ghiChu) {
   return meta;
 }
 
+export function stripTiendoMeta(ghiChu) {
+  if (!ghiChu) return '';
+  return String(ghiChu).replace(/\s*\[tiendo:[^\]]+\]\s*/g, '').trim();
+}
+
 export function buildGhiChuWithMeta(userGhiChu, meta) {
-  const cleanNote = (userGhiChu || '').replace(/\s*\[tiendo:[^\]]+\]\s*/g, '').trim();
+  const cleanNote = stripTiendoMeta(userGhiChu);
   const metaStr = Object.entries(meta)
     .filter(([_, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `${k}=${v}`)
     .join(';');
   return metaStr ? (cleanNote ? `${cleanNote} [tiendo:${metaStr}]` : `[tiendo:${metaStr}]`) : cleanNote;
+}
+
+// Xác định trạng thái hoàn thành của 6 chặng cho 1 đơn PO
+export function resolvePoStageCompletion(order) {
+  if (!order) {
+    return { s1: false, s2: false, s3: false, s4: false, s5: false, s6: false };
+  }
+  const meta = extractTiendoMeta(order.ghi_chu);
+  const hasExplicitMeta =
+    meta.s1 !== undefined ||
+    meta.s2 !== undefined ||
+    meta.s3 !== undefined ||
+    meta.s4 !== undefined ||
+    meta.s5 !== undefined ||
+    meta.s6 !== undefined;
+
+  if (hasExplicitMeta) {
+    return {
+      s1: meta.s1 === '1',
+      s2: meta.s2 === '1',
+      s3: meta.s3 === '1',
+      s4: meta.s4 === '1',
+      s5: meta.s5 === '1',
+      s6: meta.s6 === '1'
+    };
+  }
+
+  // Fallback dựa trên tinh_trang_cuoi (không dùng ngày dự kiến để tránh tự nhảy sang Đã về kho)
+  const st = String(order.tinh_trang_cuoi || '').trim();
+  if (st === 'Đã hoàn thành') {
+    return { s1: true, s2: true, s3: true, s4: true, s5: true, s6: true };
+  }
+  if (st === 'Đã về kho') {
+    return { s1: true, s2: true, s3: true, s4: true, s5: true, s6: false };
+  }
+  if (st === 'Đang thông quan') {
+    return { s1: true, s2: true, s3: true, s4: true, s5: false, s6: false };
+  }
+  if (st === 'Đang vận chuyển') {
+    return { s1: true, s2: true, s3: true, s4: false, s5: false, s6: false };
+  }
+  if (st === 'Đang sản xuất') {
+    return { s1: true, s2: true, s3: false, s4: false, s5: false, s6: false };
+  }
+  if (st === 'Đã đặt cọc') {
+    return { s1: true, s2: false, s3: false, s4: false, s5: false, s6: false };
+  }
+  return { s1: false, s2: false, s3: false, s4: false, s5: false, s6: false };
+}
+
+// Tính trạng thái đơn hàng từ các nút Đã xong / Chưa xong của 6 chặng
+export function computeStatusFromStages({ s1, s2, s3, s4, s5, s6, isCancelled }) {
+  if (isCancelled) return 'Đã hủy';
+  if (s6) return 'Đã hoàn thành';
+  if (s5) return 'Đã về kho';
+  if (s4) return 'Đang thông quan';
+  if (s3) return 'Đang vận chuyển';
+  if (s2) return 'Đang sản xuất';
+  if (s1) return 'Đã đặt cọc';
+  return 'Chờ sản xuất';
+}
+
+// Phân loại đơn PO vào đúng cột trên Bảng Kanban 5 Chặng (1..5)
+export function getPoKanbanStage(order) {
+  if (!order) return 1;
+  const st = String(order.tinh_trang_cuoi || '').trim();
+  if (st === 'Đã hủy') return 0;
+  if (st === 'Đã về kho' || st === 'Đã hoàn thành') return 5;
+  if (st === 'Đang thông quan') return 4;
+  if (st === 'Đang vận chuyển') return 3;
+  if (st === 'Đang sản xuất') return 2;
+  if (st === 'Đã đặt cọc' || st === 'Chờ sản xuất' || st === 'Mới tạo') return 1;
+
+  const stages = resolvePoStageCompletion(order);
+  if (stages.s6 || stages.s5) return 5;
+  if (stages.s4) return 4;
+  if (stages.s3) return 3;
+  if (stages.s2) return 2;
+  return 1;
 }
 
 export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
@@ -138,6 +222,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
   useEffect(() => {
     if (order) {
       const meta = extractTiendoMeta(order.ghi_chu);
+      const resolvedStages = resolvePoStageCompletion(order);
 
       const dtStart1 = order.ngay_dat_hang ? formatDateInput(order.ngay_dat_hang) : formatDateInput(new Date());
       setNgayDatHang(dtStart1);
@@ -146,14 +231,14 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
       setDaysS1(d1);
       const end1 = meta.coc ? formatDateInput(meta.coc) : addDays(dtStart1, d1);
       setNgayCocXong(end1);
-      setS1Done(meta.s1 !== undefined ? meta.s1 === '1' : Boolean(order.ngay_dat_hang));
+      setS1Done(resolvedStages.s1);
 
       const dtSx = order.ngay_sx_xong ? formatDateInput(order.ngay_sx_xong) : '';
       const d2 = dtSx ? (calcDurationDays(end1, dtSx) || 1) : 15;
       setDaysS2(d2);
       const end2 = dtSx || addDays(end1, d2);
       setNgaySxXong(end2);
-      setS2Done(meta.s2 !== undefined ? meta.s2 === '1' : Boolean(dtSx));
+      setS2Done(resolvedStages.s2);
 
       setTrackingVanChuyen(order.tracking_van_chuyen || '');
       const d3 = meta.d3 ? (parseInt(meta.d3, 10) || 7) : 7;
@@ -162,14 +247,14 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
         ? formatDateInput(meta.cang) 
         : (order.ngay_gui_hang && order.ngay_gui_hang !== dtSx ? formatDateInput(order.ngay_gui_hang) : addDays(end2, d3));
       setNgayDenCang(dtDenCang);
-      setS3Done(meta.s3 !== undefined ? meta.s3 === '1' : Boolean(order.tracking_van_chuyen || order.ngay_gui_hang));
+      setS3Done(resolvedStages.s3);
 
       const dtTq = order.ngay_thong_quan ? formatDateInput(order.ngay_thong_quan) : '';
       const d4 = dtTq ? (calcDurationDays(dtDenCang, dtTq) || 1) : 3;
       setDaysS4(d4);
       const end4 = dtTq || addDays(dtDenCang, d4);
       setNgayThongQuan(end4);
-      setS4Done(meta.s4 !== undefined ? meta.s4 === '1' : Boolean(dtTq));
+      setS4Done(resolvedStages.s4);
 
       const dtKho = order.ngay_kho_nhan ? formatDateInput(order.ngay_kho_nhan) : '';
       const d5 = dtKho ? (calcDurationDays(end4, dtKho) || 1) : 2;
@@ -177,7 +262,7 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
       const end5 = dtKho || addDays(end4, d5);
       setNgayKhoNhan(end5);
       setSlgThucNhan(order.slg_thuc_nhan !== undefined && order.slg_thuc_nhan !== '' ? order.slg_thuc_nhan : '');
-      setS5Done(meta.s5 !== undefined ? meta.s5 === '1' : Boolean(dtKho));
+      setS5Done(resolvedStages.s5);
 
       const rawPlan = order.ke_hoach_ban || 'Bán ngay';
       const isBanSau = rawPlan.includes('Bán sau');
@@ -194,33 +279,22 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
       const d6 = calcDurationDays(end5, dtBan);
       setDaysS6(d6);
       setNgayKeHoachBan(dtBan);
-      setS6Done(meta.s6 !== undefined ? meta.s6 === '1' : Boolean(dtKho && new Date() >= new Date(dtBan)));
+      setS6Done(resolvedStages.s6);
     }
   }, [order, isOpen]);
 
   if (!isOpen || !order) return null;
 
-  // Tự động tính trạng thái
-  const autoStatus = (() => {
-    if (order.tinh_trang_cuoi === 'Đã hủy') return 'Đã hủy';
-    if (s6Done) return 'Đã hoàn thành';
-    if (s5Done || Boolean(ngayKhoNhan && new Date(ngayKhoNhan) <= new Date()) || (slgThucNhan !== '' && Number(slgThucNhan) > 0)) {
-      return 'Đã về kho';
-    }
-    if (s4Done || Boolean(ngayThongQuan && new Date(ngayThongQuan) <= new Date())) {
-      return 'Đang thông quan';
-    }
-    if (s3Done || Boolean(trackingVanChuyen) || Boolean(ngayDenCang && new Date(ngayDenCang) <= new Date())) {
-      return 'Đang vận chuyển';
-    }
-    if (s2Done || Boolean(ngaySxXong && new Date(ngaySxXong) <= new Date())) {
-      return 'Đang sản xuất';
-    }
-    if (s1Done || Boolean(ngayDatHang)) {
-      return 'Đã đặt cọc';
-    }
-    return 'Chờ sản xuất';
-  })();
+  // Tự động tính trạng thái chuẩn theo các chặng Đã xong
+  const autoStatus = computeStatusFromStages({
+    s1: s1Done,
+    s2: s2Done,
+    s3: s3Done,
+    s4: s4Done,
+    s5: s5Done,
+    s6: s6Done,
+    isCancelled: order.tinh_trang_cuoi === 'Đã hủy'
+  });
 
   // Cascading date changes
   const handleStart1Change = (val) => {
@@ -385,29 +459,54 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
     if (next && !ngayDatHang) {
       handleStart1Change(formatDateInput(new Date()));
     }
+    if (!next) {
+      setS2Done(false);
+      setS3Done(false);
+      setS4Done(false);
+      setS5Done(false);
+      setS6Done(false);
+    }
   };
 
   const handleToggleS2 = () => {
     const next = !s2Done;
     setS2Done(next);
-    if (next && !ngaySxXong) {
-      handleEnd2Change(addDays(ngayCocXong, daysS2));
+    if (next) {
+      setS1Done(true);
+      if (!ngaySxXong) handleEnd2Change(addDays(ngayCocXong, daysS2));
+    } else {
+      setS3Done(false);
+      setS4Done(false);
+      setS5Done(false);
+      setS6Done(false);
     }
   };
 
   const handleToggleS3 = () => {
     const next = !s3Done;
     setS3Done(next);
-    if (next && !ngayDenCang) {
-      handleEnd3Change(addDays(ngaySxXong, daysS3));
+    if (next) {
+      setS1Done(true);
+      setS2Done(true);
+      if (!ngayDenCang) handleEnd3Change(addDays(ngaySxXong, daysS3));
+    } else {
+      setS4Done(false);
+      setS5Done(false);
+      setS6Done(false);
     }
   };
 
   const handleToggleS4 = () => {
     const next = !s4Done;
     setS4Done(next);
-    if (next && !ngayThongQuan) {
-      handleEnd4Change(addDays(ngayDenCang, daysS4));
+    if (next) {
+      setS1Done(true);
+      setS2Done(true);
+      setS3Done(true);
+      if (!ngayThongQuan) handleEnd4Change(addDays(ngayDenCang, daysS4));
+    } else {
+      setS5Done(false);
+      setS6Done(false);
     }
   };
 
@@ -415,16 +514,27 @@ export function XnkTrackingModal({ isOpen, onClose, order, onSaved }) {
     const next = !s5Done;
     setS5Done(next);
     if (next) {
+      setS1Done(true);
+      setS2Done(true);
+      setS3Done(true);
+      setS4Done(true);
       if (!ngayKhoNhan) handleEnd5Change(addDays(ngayThongQuan, daysS5));
       if (!slgThucNhan) setSlgThucNhan(order.so_luong || '');
+    } else {
+      setS6Done(false);
     }
   };
 
   const handleToggleS6 = () => {
     const next = !s6Done;
     setS6Done(next);
-    if (next && !ngayKeHoachBan) {
-      handleEnd6Change(addDays(ngayKhoNhan, daysS6));
+    if (next) {
+      setS1Done(true);
+      setS2Done(true);
+      setS3Done(true);
+      setS4Done(true);
+      setS5Done(true);
+      if (!ngayKeHoachBan) handleEnd6Change(addDays(ngayKhoNhan, daysS6));
     }
   };
 

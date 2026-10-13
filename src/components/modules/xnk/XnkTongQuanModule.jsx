@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { XnkHeaderNav } from './XnkHeaderNav';
-import { XnkTrackingModal } from './XnkTrackingModal';
+import { XnkTrackingModal, getPoKanbanStage } from './XnkTrackingModal';
 import { exportToExcel } from '../../../services/excelService';
 import { 
   formatDateVN, 
@@ -239,35 +239,35 @@ export function XnkTongQuanModule({ onNavigate }) {
       title: '1. Đặt hàng & Cọc',
       icon: Clock,
       color: 'blue',
-      items: filteredDonHangList.filter(d => Boolean(d.ngay_dat_hang) && !d.ngay_sx_xong)
+      items: filteredDonHangList.filter(d => getPoKanbanStage(d) === 1)
     },
     {
       id: 'st2',
       title: '2. Đang sản xuất',
       icon: Factory,
       color: 'amber',
-      items: filteredDonHangList.filter(d => Boolean(d.ngay_sx_xong) && !d.ngay_gui_hang)
+      items: filteredDonHangList.filter(d => getPoKanbanStage(d) === 2)
     },
     {
       id: 'st3',
       title: '3. Vận chuyển QT',
       icon: Truck,
       color: 'cyan',
-      items: filteredDonHangList.filter(d => Boolean(d.ngay_gui_hang) && !d.ngay_thong_quan)
+      items: filteredDonHangList.filter(d => getPoKanbanStage(d) === 3)
     },
     {
       id: 'st4',
       title: '4. Đang thông quan',
       icon: CheckCircle2,
       color: 'indigo',
-      items: filteredDonHangList.filter(d => Boolean(d.ngay_thong_quan) && !d.ngay_kho_nhan)
+      items: filteredDonHangList.filter(d => getPoKanbanStage(d) === 4)
     },
     {
       id: 'st5',
       title: '5. Đã về kho',
       icon: Warehouse,
       color: 'emerald',
-      items: filteredDonHangList.filter(d => Boolean(d.ngay_kho_nhan))
+      items: filteredDonHangList.filter(d => getPoKanbanStage(d) === 5)
     }
   ];
 

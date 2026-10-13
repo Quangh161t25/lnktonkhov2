@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../../context/DataContext';
-import { XnkTrackingModal } from './XnkTrackingModal';
+import { XnkTrackingModal, getPoKanbanStage } from './XnkTrackingModal';
 import { exportToExcel } from '../../../services/excelService';
 import { 
   formatDateVN, 
@@ -81,37 +81,37 @@ export function XnkTienDoModule({ onNavigate }) {
     );
   }, [donHangList, searchTerm]);
 
-  // 5 Kanban Stages
+  // 5 Kanban Stages (Phân loại theo trạng thái tiến độ thực tế thay vì ngày dự kiến)
   const kanbanStages = [
     {
       id: 'st1',
       title: '1. Đặt hàng & Cọc',
       icon: Clock,
-      items: filteredList.filter(d => Boolean(d.ngay_dat_hang) && !d.ngay_sx_xong)
+      items: filteredList.filter(d => getPoKanbanStage(d) === 1)
     },
     {
       id: 'st2',
       title: '2. Đang sản xuất',
       icon: Factory,
-      items: filteredList.filter(d => Boolean(d.ngay_sx_xong) && !d.ngay_gui_hang)
+      items: filteredList.filter(d => getPoKanbanStage(d) === 2)
     },
     {
       id: 'st3',
       title: '3. Vận chuyển QT',
       icon: Truck,
-      items: filteredList.filter(d => Boolean(d.ngay_gui_hang) && !d.ngay_thong_quan)
+      items: filteredList.filter(d => getPoKanbanStage(d) === 3)
     },
     {
       id: 'st4',
       title: '4. Đang thông quan',
       icon: CheckCircle2,
-      items: filteredList.filter(d => Boolean(d.ngay_thong_quan) && !d.ngay_kho_nhan)
+      items: filteredList.filter(d => getPoKanbanStage(d) === 4)
     },
     {
       id: 'st5',
       title: '5. Đã về kho',
       icon: Warehouse,
-      items: filteredList.filter(d => Boolean(d.ngay_kho_nhan))
+      items: filteredList.filter(d => getPoKanbanStage(d) === 5)
     }
   ];
 

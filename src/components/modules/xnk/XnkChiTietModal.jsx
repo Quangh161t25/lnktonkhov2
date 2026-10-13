@@ -6,6 +6,7 @@ import {
   formatNumber, 
   cleanNumber 
 } from '../../../utils/formatters';
+import { stripTiendoMeta, resolvePoStageCompletion } from './XnkTrackingModal';
 import { 
   X, 
   Lightbulb, 
@@ -749,10 +750,10 @@ export function XnkChiTietModal({
                       </div>
 
                       {/* Ghi chú đơn nếu có */}
-                      {po.ghi_chu && (
+                      {stripTiendoMeta(po.ghi_chu) && (
                         <div className="p-2.5 bg-blue-50/40 rounded-xl border border-blue-100 text-[11px]">
                           <span className="font-bold text-blue-900 block mb-0.5">Ghi chú đơn hàng:</span>
-                          <p className="text-slate-700 whitespace-pre-line">{po.ghi_chu}</p>
+                          <p className="text-slate-700 whitespace-pre-line">{stripTiendoMeta(po.ghi_chu)}</p>
                         </div>
                       )}
 
@@ -1098,97 +1099,114 @@ export function XnkChiTietModal({
                   )}
 
                   {/* Sơ đồ 6 chặng */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    {/* Chặng 1 */}
-                    <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                          <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">1</span>
-                          Đặt hàng & Cọc
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-semibold">{formatDateVN(selectedPo.ngay_dat_hang) || '-'}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">Ký hợp đồng và cọc xưởng.</p>
-                      <div className="text-[11px] font-bold text-amber-700">
-                        Cọc: {formatCurrency(selectedPo.tien_coc)}
-                      </div>
-                    </div>
+                  {(() => {
+                    const stDone = resolvePoStageCompletion(selectedPo);
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {/* Chặng 1 */}
+                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s1 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
+                              <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">1</span>
+                              Đặt hàng & Cọc
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s1 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                              {stDone.s1 ? 'Đã xong' : 'Chưa xong'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">Ngày đặt: {formatDateVN(selectedPo.ngay_dat_hang) || '-'}</p>
+                          <div className="text-[11px] font-bold text-amber-700">
+                            Cọc: {formatCurrency(selectedPo.tien_coc)}
+                          </div>
+                        </div>
 
-                    {/* Chặng 2 */}
-                    <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                          <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px]">2</span>
-                          Sản xuất xưởng
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-semibold">{formatDateVN(selectedPo.ngay_sx_xong) || 'Đang SX'}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">Gia công theo tiêu chuẩn mẫu.</p>
-                      <div className="text-[11px] font-bold text-slate-700">
-                        Xưởng: {selectedPo.ten_ncc || 'Xưởng đối tác'}
-                      </div>
-                    </div>
+                        {/* Chặng 2 */}
+                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s2 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
+                              <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px]">2</span>
+                              Sản xuất xưởng
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s2 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                              {stDone.s2 ? 'Đã xong' : 'Chưa xong'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">Dự kiến xong: {formatDateVN(selectedPo.ngay_sx_xong) || '-'}</p>
+                          <div className="text-[11px] font-bold text-slate-700">
+                            Xưởng: {selectedPo.ten_ncc || 'Xưởng đối tác'}
+                          </div>
+                        </div>
 
-                    {/* Chặng 3 */}
-                    <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                          <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">3</span>
-                          Vận chuyển QT
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-semibold">{selectedPo.tracking_van_chuyen || 'Chờ gửi'}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">Vận chuyển quốc tế về cửa khẩu.</p>
-                      <div className="text-[11px] font-semibold text-blue-700">
-                        Vận đơn: {selectedPo.tracking_van_chuyen || 'Chưa có'}
-                      </div>
-                    </div>
+                        {/* Chặng 3 */}
+                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s3 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
+                              <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">3</span>
+                              Vận chuyển QT
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s3 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                              {stDone.s3 ? 'Đã xong' : 'Chưa xong'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">Đến cảng DK: {formatDateVN(selectedPo.ngay_gui_hang) || '-'}</p>
+                          <div className="text-[11px] font-semibold text-blue-700">
+                            Vận đơn: {selectedPo.tracking_van_chuyen || 'Chưa có'}
+                          </div>
+                        </div>
 
-                    {/* Chặng 4 */}
-                    <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                          <span className="w-4 h-4 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-[10px]">4</span>
-                          Hải quan & Cảng
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-semibold">{formatDateVN(selectedPo.ngay_thong_quan) || 'Chờ HQ'}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">Mở tờ khai & kiểm hóa thông quan.</p>
-                      <div className="text-[11px] text-slate-600">
-                        Cảng Cát Lái / Hữu Nghị
-                      </div>
-                    </div>
+                        {/* Chặng 4 */}
+                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s4 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
+                              <span className="w-4 h-4 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-[10px]">4</span>
+                              Hải quan & Cảng
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s4 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                              {stDone.s4 ? 'Đã xong' : 'Chưa xong'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">Thông quan DK: {formatDateVN(selectedPo.ngay_thong_quan) || '-'}</p>
+                          <div className="text-[11px] text-slate-600">
+                            Cảng Cát Lái / Hữu Nghị
+                          </div>
+                        </div>
 
-                    {/* Chặng 5 */}
-                    <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                          <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]">5</span>
-                          Kho VN nhận hàng
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-semibold">{formatDateVN(selectedPo.ngay_kho_nhan) || 'Chờ về kho'}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">Kéo hàng về kho & kiểm đếm.</p>
-                      <div className="text-[11px] font-bold text-emerald-700">
-                        Thực nhận: {selectedPo.slg_thuc_nhan ? `${formatNumber(selectedPo.slg_thuc_nhan)} cái` : 'Đang đợi'}
-                      </div>
-                    </div>
+                        {/* Chặng 5 */}
+                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s5 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
+                              <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]">5</span>
+                              Kho VN nhận hàng
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s5 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                              {stDone.s5 ? 'Đã xong' : 'Chưa xong'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">Về kho DK: {formatDateVN(selectedPo.ngay_kho_nhan) || '-'}</p>
+                          <div className="text-[11px] font-bold text-emerald-700">
+                            Thực nhận: {selectedPo.slg_thuc_nhan ? `${formatNumber(selectedPo.slg_thuc_nhan)} cái` : 'Đang đợi'}
+                          </div>
+                        </div>
 
-                    {/* Chặng 6 */}
-                    <div className="p-3 bg-amber-50/50 border border-amber-200 rounded-2xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-amber-900 text-xs flex items-center gap-1">
-                          <span className="w-4 h-4 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-[10px]">6</span>
-                          Phân phối & Bán
-                        </span>
-                        <span className="text-[11px] text-amber-800 font-bold">{selectedPo.ke_hoach_ban}</span>
+                        {/* Chặng 6 */}
+                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s6 ? 'bg-amber-50/70 border-amber-300' : 'bg-amber-50/30 border-amber-200'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-amber-900 text-xs flex items-center gap-1">
+                              <span className="w-4 h-4 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-[10px]">6</span>
+                              Phân phối & Bán
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s6 ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-500'}`}>
+                              {stDone.s6 ? 'Đang bán' : 'Chưa bán'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">Mở bán lẻ đa kênh hoặc trữ kho.</p>
+                          <div className="text-[11px] font-bold text-amber-800">
+                            Kế hoạch: {selectedPo.ke_hoach_ban}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-slate-500">Mở bán lẻ đa kênh hoặc trữ kho.</p>
-                      <div className="text-[11px] font-bold text-amber-800">
-                        Kế hoạch: {selectedPo.ke_hoach_ban}
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl">
