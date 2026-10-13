@@ -6,7 +6,7 @@ import {
   formatNumber, 
   cleanNumber 
 } from '../../../utils/formatters';
-import { stripTiendoMeta, resolvePoStageCompletion } from './XnkTrackingModal';
+import { stripTiendoMeta, XnkTrackingMatrixContent } from './XnkTrackingModal';
 import { 
   X, 
   Lightbulb, 
@@ -208,7 +208,11 @@ export function XnkChiTietModal({
   const relatedOrders = useMemo(() => {
     if (!item) return [];
     if (type === 'donhang' || type === 'tiendo') {
-      return [item];
+      const targetPo = String(item.ma_po || '').trim();
+      const latest = targetPo
+        ? allOrders.find(o => String(o.ma_po || '').trim() === targetPo)
+        : null;
+      return [latest || item];
     }
     if (type === 'ytuong') {
       const sampleIds = new Set(relatedSamples.map(s => String(s.id_mau || '').trim()).filter(Boolean));
@@ -1041,42 +1045,12 @@ export function XnkChiTietModal({
           )}
 
           {/* ============================================================ */}
-          {/* TAB 4: TIẾN ĐỘ 6 CHẶNG LIÊN HOÀN                              */}
+          {/* TAB 4: TIẾN ĐỘ 6 CHẶNG LIÊN HOÀN (BẢNG MA TRẬN & STEPPER)     */}
           {/* ============================================================ */}
           {activeTab === 'TIENDO' && (
             <div className="space-y-4">
               {selectedPo ? (
                 <div className="space-y-3.5">
-                  <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <span className="font-bold text-indigo-950 text-sm">
-                        Quy trình 6 chặng đơn PO: {selectedPo.ma_po}
-                      </span>
-                      <p className="text-slate-500 text-[11px]">
-                        Chuỗi cung ứng liên hoàn: Từ ngày quy trình này là Đến ngày quy trình trước.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="px-3 py-1 bg-indigo-600 text-white font-bold rounded-xl text-xs shadow-2xs">
-                        Trạng thái: {selectedPo.tinh_trang_cuoi || 'Đang sản xuất'}
-                      </span>
-                      {onOpenEditTracking && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onClose();
-                            onOpenEditTracking(selectedPo);
-                          }}
-                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1 cursor-pointer shadow-xs"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>Cập nhật tiến độ</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
                   {/* Selector chuyển đổi PO nếu có nhiều hơn 1 đơn PO */}
                   {relatedOrders.length > 1 && (
                     <div className="flex items-center gap-1.5 p-2 bg-indigo-50/40 rounded-xl overflow-x-auto border border-indigo-100">
@@ -1098,115 +1072,11 @@ export function XnkChiTietModal({
                     </div>
                   )}
 
-                  {/* Sơ đồ 6 chặng */}
-                  {(() => {
-                    const stDone = resolvePoStageCompletion(selectedPo);
-                    return (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {/* Chặng 1 */}
-                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s1 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">1</span>
-                              Đặt hàng & Cọc
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s1 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-                              {stDone.s1 ? 'Đã xong' : 'Chưa xong'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">Ngày đặt: {formatDateVN(selectedPo.ngay_dat_hang) || '-'}</p>
-                          <div className="text-[11px] font-bold text-amber-700">
-                            Cọc: {formatCurrency(selectedPo.tien_coc)}
-                          </div>
-                        </div>
-
-                        {/* Chặng 2 */}
-                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s2 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px]">2</span>
-                              Sản xuất xưởng
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s2 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-                              {stDone.s2 ? 'Đã xong' : 'Chưa xong'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">Dự kiến xong: {formatDateVN(selectedPo.ngay_sx_xong) || '-'}</p>
-                          <div className="text-[11px] font-bold text-slate-700">
-                            Xưởng: {selectedPo.ten_ncc || 'Xưởng đối tác'}
-                          </div>
-                        </div>
-
-                        {/* Chặng 3 */}
-                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s3 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">3</span>
-                              Vận chuyển QT
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s3 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-                              {stDone.s3 ? 'Đã xong' : 'Chưa xong'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">Đến cảng DK: {formatDateVN(selectedPo.ngay_gui_hang) || '-'}</p>
-                          <div className="text-[11px] font-semibold text-blue-700">
-                            Vận đơn: {selectedPo.tracking_van_chuyen || 'Chưa có'}
-                          </div>
-                        </div>
-
-                        {/* Chặng 4 */}
-                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s4 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-[10px]">4</span>
-                              Hải quan & Cảng
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s4 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-                              {stDone.s4 ? 'Đã xong' : 'Chưa xong'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">Thông quan DK: {formatDateVN(selectedPo.ngay_thong_quan) || '-'}</p>
-                          <div className="text-[11px] text-slate-600">
-                            Cảng Cát Lái / Hữu Nghị
-                          </div>
-                        </div>
-
-                        {/* Chặng 5 */}
-                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s5 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]">5</span>
-                              Kho VN nhận hàng
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s5 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-                              {stDone.s5 ? 'Đã xong' : 'Chưa xong'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">Về kho DK: {formatDateVN(selectedPo.ngay_kho_nhan) || '-'}</p>
-                          <div className="text-[11px] font-bold text-emerald-700">
-                            Thực nhận: {selectedPo.slg_thuc_nhan ? `${formatNumber(selectedPo.slg_thuc_nhan)} cái` : 'Đang đợi'}
-                          </div>
-                        </div>
-
-                        {/* Chặng 6 */}
-                        <div className={`p-3 border rounded-2xl space-y-1.5 ${stDone.s6 ? 'bg-amber-50/70 border-amber-300' : 'bg-amber-50/30 border-amber-200'}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-amber-900 text-xs flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-[10px]">6</span>
-                              Phân phối & Bán
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stDone.s6 ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-500'}`}>
-                              {stDone.s6 ? 'Đang bán' : 'Chưa bán'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">Mở bán lẻ đa kênh hoặc trữ kho.</p>
-                          <div className="text-[11px] font-bold text-amber-800">
-                            Kế hoạch: {selectedPo.ke_hoach_ban}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {/* Giao diện Bảng ma trận 6 chặng (Nhập & Lưu) + Stepper Lịch trình trực quan như Ảnh 1 */}
+                  <XnkTrackingMatrixContent
+                    order={selectedPo}
+                    embedded={true}
+                  />
                 </div>
               ) : (
                 <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl">
