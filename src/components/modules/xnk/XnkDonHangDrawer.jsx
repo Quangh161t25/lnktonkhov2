@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from '../../common/Drawer';
 import { ProductSearchCell } from '../../common/ProductSearchCell';
+import { SuggestInput } from '../../common/SuggestInput';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { 
@@ -85,7 +86,7 @@ export function XnkDonHangDrawer({
   initialSample = null,
   onSaved 
 }) {
-  const { currentUser, hasActionPermission } = useAuth();
+  const { currentUser, hasActionPermission, usersData } = useAuth();
   const { 
     appendRow, 
     updateRow, 
@@ -115,6 +116,31 @@ export function XnkDonHangDrawer({
       price: cleanNumber(r[4]) || 0
     })).filter(p => p.id);
   }, [productData]);
+
+  // Danh sách NCC gợi ý từ DSNV, Mẫu thử & PO đã có
+  const nccOptions = useMemo(() => {
+    const map = new Map();
+    const add = (name, contact = '') => {
+      const n = (name || '').toString().trim();
+      if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), { name: n, contact });
+    };
+
+    (usersData || []).forEach(u => {
+      const typeStr = (u.type || '').toString().trim().toUpperCase();
+      const roleStr = (u.role || '').toString().trim().toUpperCase();
+      if (typeStr.includes('NCC') || typeStr.includes('NHÀ CUNG CẤP') || typeStr.includes('XƯỞNG') || roleStr === 'NCC') {
+        add(u.name, u.image || '');
+      }
+    });
+    if (xnkMauData && xnkMauData.length > 1) {
+      xnkMauData.slice(1).forEach(r => add(r[2], (r[3] || '').toString().trim()));
+    }
+    if (xnkDonHangData && xnkDonHangData.length > 1) {
+      xnkDonHangData.slice(1).forEach(r => add(r[4]));
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [usersData, xnkMauData, xnkDonHangData]);
 
   // Chế độ xem lịch trình: 'TABLE' (Bảng ma trận) vs 'CALENDAR' (Dạng Lịch/Gantt)
   const [timelineViewMode, setTimelineViewMode] = useState('TABLE');
@@ -391,6 +417,7 @@ export function XnkDonHangDrawer({
   // Luồng 1: Chọn Ý tưởng -> Tự điền SKU, Tên SP và gợi ý Mẫu thử
   const handleSelectIdea = (selectedIdeaId) => {
     setIdYtuong(selectedIdeaId);
+    if (!selectedIdeaId) return;
     const idea = ytuongOptions.find(y => y.id_y_tuong === selectedIdeaId);
     if (idea) {
       if (idea.sku_du_kien) setSku(idea.sku_du_kien);
@@ -820,18 +847,19 @@ export function XnkDonHangDrawer({
                   </span>
                 )}
               </div>
-              <select
+              <SuggestInput
                 value={idYtuong}
-                onChange={(e) => handleSelectIdea(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition"
-              >
-                <option value="">-- Chọn ý tưởng sản phẩm (Gợi ý Mẫu thử) --</option>
-                {ytuongOptions.map(y => (
-                  <option key={y.id_y_tuong} value={y.id_y_tuong}>
-                    [{y.sku_du_kien || y.id_y_tuong}] {y.ten_sp} ({y.trang_thai})
-                  </option>
-                ))}
-              </select>
+                onSelect={(item) => handleSelectIdea(item ? item.key : '')}
+                items={ytuongOptions.map(y => ({
+                  key: y.id_y_tuong,
+                  title: `[${y.sku_du_kien || y.id_y_tuong}] ${y.ten_sp}`,
+                  subtitle: y.id_y_tuong,
+                  extra: y.trang_thai
+                }))}
+                headerLabel="Gợi ý ý tưởng"
+                placeholder="Gõ tên SP, SKU hoặc mã ý tưởng..."
+                className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition"
+              />
             </div>
 
             {/* Chọn Mẫu thử đã duyệt đạt chuẩn */}
@@ -846,18 +874,19 @@ export function XnkDonHangDrawer({
                   </span>
                 )}
               </div>
-              <select
+              <SuggestInput
                 value={idMau}
-                onChange={(e) => handleSelectSample(e.target.value)}
-                className="w-full px-3 py-2 bg-emerald-50/40 hover:bg-white border border-emerald-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition"
-              >
-                <option value="">-- Chọn mẫu thử đã duyệt (Tự liên kết Ý tưởng, SKU, Tên, NCC) --</option>
-                {suggestedSamples.map(s => (
-                  <option key={s.id_mau} value={s.id_mau}>
-                    [{s.id_mau}] NCC: {s.ten_ncc} {s.gia_mau ? `• Giá mẫu: ${formatCurrency(s.gia_mau)}` : ''} - (Xếp hạng: {s.danh_gia_xep_hang || 'Đạt'})
-                  </option>
-                ))}
-              </select>
+                onSelect={(item) => handleSelectSample(item ? item.key : '')}
+                items={suggestedSamples.map(s => ({
+                  key: s.id_mau,
+                  title: `[${s.id_mau}] NCC: ${s.ten_ncc}`,
+                  subtitle: `Ý tưởng: ${s.id_y_tuong || '—'} • Xếp hạng: ${s.danh_gia_xep_hang || 'Đạt'}`,
+                  extra: s.gia_mau ? formatCurrency(s.gia_mau) : ''
+                }))}
+                headerLabel="Gợi ý mẫu thử đạt"
+                placeholder="Gõ mã mẫu, tên NCC..."
+                className="w-full px-3 py-2 bg-emerald-50/40 hover:bg-white border border-emerald-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition"
+              />
             </div>
           </div>
 
@@ -928,15 +957,23 @@ export function XnkDonHangDrawer({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Nhà cung cấp / Xưởng sản xuất
-              </label>
-              <input
-                type="text"
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  Nhà cung cấp / Xưởng sản xuất
+                </label>
+                {nccOptions.length > 0 && (
+                  <span className="text-[10px] text-blue-600 font-bold">
+                    ({nccOptions.length} NCC trong DS)
+                  </span>
+                )}
+              </div>
+              <SuggestInput
                 value={tenNcc}
-                onChange={(e) => setTenNcc(e.target.value)}
-                placeholder="VD: Xưởng Phật Sơn A..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                onChange={setTenNcc}
+                onSelect={(item) => setTenNcc(item.title)}
+                items={nccOptions.map(n => ({ key: n.name, title: n.name, subtitle: n.contact }))}
+                headerLabel="Gợi ý NCC"
+                placeholder="Gõ tên NCC / xưởng..."
               />
             </div>
           </div>

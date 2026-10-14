@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from '../../common/Drawer';
+import { SuggestInput } from '../../common/SuggestInput';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { formatDateInput, cleanNumber, formatCurrency } from '../../../utils/formatters';
@@ -251,18 +252,18 @@ export function XnkMauDrawer({
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Liên kết Ý tưởng sản phẩm
             </label>
-            <select
+            <SuggestInput
               value={idYtuong}
-              onChange={(e) => setIdYtuong(e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-            >
-              <option value="">-- Chọn ý tưởng sản phẩm --</option>
-              {ytuongList.map(yt => (
-                <option key={yt.id_y_tuong} value={yt.id_y_tuong}>
-                  [{yt.sku_du_kien || yt.id_y_tuong}] {yt.ten_sp} ({yt.trang_thai})
-                </option>
-              ))}
-            </select>
+              onSelect={(item) => setIdYtuong(item ? item.key : '')}
+              items={ytuongList.map(yt => ({
+                key: yt.id_y_tuong,
+                title: `[${yt.sku_du_kien || yt.id_y_tuong}] ${yt.ten_sp}`,
+                subtitle: yt.id_y_tuong,
+                extra: yt.trang_thai
+              }))}
+              headerLabel="Gợi ý ý tưởng"
+              placeholder="Gõ tên SP, SKU hoặc mã ý tưởng..."
+            />
           </div>
         </div>
 
@@ -304,42 +305,16 @@ export function XnkMauDrawer({
               )}
             </div>
 
-            {/* Dropdown chọn NCC từ danh sách */}
-            <select
-              value={nccOptions.some(n => n.name === tenNcc) ? tenNcc : (tenNcc ? '__CUSTOM__' : '')}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === '__CUSTOM__') {
-                  setTenNcc('');
-                } else if (val) {
-                  setTenNcc(val);
-                  const selectedNcc = nccOptions.find(n => n.name === val);
-                  if (selectedNcc?.contact && !lienHeNcc) {
-                    setLienHeNcc(selectedNcc.contact);
-                  }
-                } else {
-                  setTenNcc('');
-                }
-              }}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none mb-1.5"
-            >
-              <option value="">-- Chọn NCC từ danh sách ({nccOptions.length} NCC) --</option>
-              {nccOptions.map(n => (
-                <option key={n.name} value={n.name}>
-                  🏢 {n.name} {n.contact ? `(Liên hệ: ${n.contact})` : ''}
-                </option>
-              ))}
-              <option value="__CUSTOM__">✍️ Tự nhập nhà cung cấp / xưởng khác...</option>
-            </select>
-
-            {/* Ô input tên NCC */}
-            <input
-              type="text"
+            <SuggestInput
               value={tenNcc}
-              onChange={(e) => setTenNcc(e.target.value)}
-              placeholder="Nhập hoặc kiểm tra tên nhà cung cấp..."
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-              required
+              onChange={setTenNcc}
+              onSelect={(item) => {
+                setTenNcc(item.title);
+                if (item.subtitle && !lienHeNcc) setLienHeNcc(item.subtitle);
+              }}
+              items={nccOptions.map(n => ({ key: n.name, title: n.name, subtitle: n.contact }))}
+              headerLabel="Gợi ý NCC"
+              placeholder="Gõ tên nhà cung cấp / xưởng..."
             />
           </div>
 
