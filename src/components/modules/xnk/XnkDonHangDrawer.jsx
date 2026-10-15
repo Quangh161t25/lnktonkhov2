@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Drawer } from '../../common/Drawer';
 import { ProductSearchCell } from '../../common/ProductSearchCell';
 import { SuggestInput } from '../../common/SuggestInput';
@@ -26,8 +26,11 @@ import {
   Check, 
   ArrowRight,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  Trash2
 } from 'lucide-react';
+import { buildPoLinesMap, getPoLines, summarizePoLines } from './xnkPoLines';
 import { 
   extractTiendoMeta, 
   stripTiendoMeta, 
@@ -79,6 +82,24 @@ function calcDurationDays(startDate, endDate) {
   return diffDays >= 0 ? diffDays : 0;
 }
 
+// Tạo 1 dòng SP trống cho PO
+let poLineSeq = 0;
+function newPoLine(data = {}) {
+  poLineSeq += 1;
+  return {
+    uid: `ln-${Date.now()}-${poLineSeq}`,
+    id_y_tuong: '',
+    id_mau: '',
+    sku: '',
+    ten_sp: '',
+    so_luong: 100,
+    don_gia: 0,
+    slg_thuc_nhan: '',
+    ghi_chu: '',
+    ...data
+  };
+}
+
 export function XnkDonHangDrawer({ 
   isOpen, 
   onClose, 
@@ -88,19 +109,23 @@ export function XnkDonHangDrawer({
 }) {
   const { currentUser, hasActionPermission, usersData } = useAuth();
   const { 
-    appendRow, 
-    updateRow, 
+    appendRow,
+    appendRows,
+    updateRow,  
     logAuditAction, 
     xnkYtuongData, 
     xnkMauData,
     xnkDonHangData,
+    xnkDonHangCtData,
     productData,
-    fetchModule 
+    deleteRow,
+    fetchModule
   } = useData();
 
-  // Đảm bảo dữ liệu danh sách sản phẩm DS_SP được tải
+  // Đảm bảo dữ liệu danh sách sản phẩm DS_SP và chi tiết SP của PO được tải
   useEffect(() => {
     if (isOpen) {
+      fetchModule('xnk_donhang_ct');
       if (!productData || productData.length <= 1) {
         fetchModule('sanpham');
       }
@@ -147,14 +172,11 @@ export function XnkDonHangDrawer({
 
   // 1. Thông tin đơn hàng cơ bản
   const [maPo, setMaPo] = useState('');
-  const [idYtuong, setIdYtuong] = useState('');
-  const [idMau, setIdMau] = useState('');
-  const [sku, setSku] = useState('');
-  const [tenSp, setTenSp] = useState('');
   const [tenNcc, setTenNcc] = useState('');
-  const [soLuong, setSoLuong] = useState(100);
-  const [donGia, setDonGia] = useState(0);
   const [tienCoc, setTienCoc] = useState(0);
+
+  // Danh sách sản phẩm trong PO (1 PO - nhiều SP, mỗi SP liên kết Ý tưởng / Mẫu thử riêng)
+  const [lines, setLines] = useState(() => [newPoLine()]);
 
   // 2. Tiến độ & Lịch trình 6 chặng liên hoàn (Từ ngày chặng này = Đến ngày chặng trước)
   // Chặng 1: Đặt hàng & Cọc
@@ -183,7 +205,6 @@ export function XnkDonHangDrawer({
   // Chặng 5: Kho Việt Nam nhận hàng (Từ ngày = ngayThongQuan)
   const [daysStage5, setDaysStage5] = useState(2);
   const [ngayKhoNhan, setNgayKhoNhan] = useState('');
-  const [slgThucNhan, setSlgThucNhan] = useState('');
   const [stage5Done, setStage5Done] = useState(false);
 
   // Chặng 6: Kế hoạch phân phối & Mở bán (Từ ngày = ngayKhoNhan)
@@ -199,8 +220,19 @@ export function XnkDonHangDrawer({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Auto calculate total amount
-  const tongTien = (cleanNumber(soLuong) || 0) * (cleanNumber(donGia) || 0);
+  // Tổng hợp từ các dòng SP
+  const poSummary = useMemo(() => summarizePoLines(lines), [lines]);
+  const tongTien = poSummary.tong_tien;
+  const tongSoLuong = poSummary.so_luong;
+  const slgThucNhan = poSummary.slg_thuc_nhan;
+
+  const updateLine = (uid, patch) => {
+    setLines(prev => prev.map(l => (l.uid === uid ? { ...l, ...patch } : l)));
+  };
+  const addLine = () => setLines(prev => [...prev, newPoLine()]);
+  const removeLine = (uid) => {
+    setLines(prev => (prev.length <= 1 ? [newPoLine()] : prev.filter(l => l.uid !== uid)));
+  };
 
   // 1. Parsed Ý tưởng từ xnkYtuongData
   const ytuongOptions = useMemo(() => {
@@ -241,11 +273,44 @@ export function XnkDonHangDrawer({
     });
   }, [xnkMauData]);
 
-  // 3. Mẫu thử được gợi ý theo Ý tưởng đã chọn
-  const suggestedSamples = useMemo(() => {
-    if (!idYtuong) return approvedSamples;
-    return approvedSamples.filter(s => s.id_y_tuong === idYtuong);
-  }, [idYtuong, approvedSamples]);
+  // 3. Mẫu thử được gợi ý theo Ý tưởng của từng dòng SP
+  const getSuggestedSamples = (ideaId) => (
+    ideaId ? approvedSamples.filter(s => s.id_y_tuong === ideaId) : approvedSamples
+  );
+
+  // 4. Dòng chi tiết SP đã lưu của các PO
+  const poLinesMap = useMemo(() => buildPoLinesMap(xnkDonHangCtData), [xnkDonHangCtData]);
+
+  // Mở sửa PO trước khi chi tiết SP tải xong -> khi dữ liệu về thì nạp lại các dòng SP thật
+  const linesLoadedFromSheetRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen || !editItem || linesLoadedFromSheetRef.current) return;
+    const saved = poLinesMap[String(editItem.ma_po || '').trim().toUpperCase()];
+    if (!saved || saved.length === 0) return;
+    linesLoadedFromSheetRef.current = true;
+    setLines(saved.map(toFormLine));
+  }, [isOpen, editItem, poLinesMap]);
+
+  // Tìm ý tưởng của 1 dòng SP (qua mẫu thử, rồi SKU / Tên SP)
+  const resolveIdeaId = (line) => {
+    if (line.id_y_tuong) return line.id_y_tuong;
+    const sample = approvedSamples.find(s => s.id_mau === line.id_mau);
+    if (sample?.id_y_tuong) return sample.id_y_tuong;
+    const idea = ytuongOptions.find(y => (line.sku && y.sku_du_kien === line.sku) || (line.ten_sp && y.ten_sp === line.ten_sp));
+    return idea?.id_y_tuong || '';
+  };
+
+  // Chuyển dòng SP đã lưu thành dòng trên form
+  const toFormLine = (l) => newPoLine({
+    id_y_tuong: resolveIdeaId(l),
+    id_mau: l.id_mau,
+    sku: l.sku,
+    ten_sp: l.ten_sp,
+    so_luong: l.so_luong,
+    don_gia: l.don_gia,
+    slg_thuc_nhan: l.slg_thuc_nhan,
+    ghi_chu: l.ghi_chu
+  });
 
   // Tự động tính toán Trạng thái sau cùng theo đúng các nút Đã xong / Chưa xong
   const autoComputedStatus = useMemo(() => {
@@ -264,12 +329,9 @@ export function XnkDonHangDrawer({
   useEffect(() => {
     if (editItem) {
       setMaPo(editItem.ma_po || '');
-      setIdMau(editItem.id_mau || '');
-      setSku(editItem.sku || '');
-      setTenSp(editItem.ten_sp || '');
       setTenNcc(editItem.ten_ncc || '');
-      setSoLuong(editItem.so_luong !== undefined && editItem.so_luong !== '' ? editItem.so_luong : 100);
-      setDonGia(editItem.don_gia !== undefined && editItem.don_gia !== '' ? editItem.don_gia : 0);
+      linesLoadedFromSheetRef.current = !!poLinesMap[String(editItem.ma_po || '').trim().toUpperCase()];
+      setLines(getPoLines(editItem, poLinesMap).map(toFormLine));
       setTienCoc(editItem.tien_coc !== undefined && editItem.tien_coc !== '' ? editItem.tien_coc : 0);
       
       // Ngày & Tiến độ
@@ -317,7 +379,6 @@ export function XnkDonHangDrawer({
       setDaysStage5(d5);
       const end5 = dtKho || addDays(end4, d5);
       setNgayKhoNhan(end5);
-      setSlgThucNhan(editItem.slg_thuc_nhan !== undefined && editItem.slg_thuc_nhan !== '' ? editItem.slg_thuc_nhan : '');
       setStage5Done(resolvedStages.s5);
 
       // Chặng 6: Kế hoạch bán
@@ -338,15 +399,6 @@ export function XnkDonHangDrawer({
       setNgayKeHoachBan(dtBan);
       setStage6Done(resolvedStages.s6);
 
-      // Tra cứu ý tưởng từ mẫu
-      const matchingSample = approvedSamples.find(s => s.id_mau === editItem.id_mau);
-      if (matchingSample?.id_y_tuong) {
-        setIdYtuong(matchingSample.id_y_tuong);
-      } else {
-        const foundIdea = ytuongOptions.find(y => y.sku_du_kien === editItem.sku || y.ten_sp === editItem.ten_sp);
-        setIdYtuong(foundIdea?.id_y_tuong || '');
-      }
-
       setManualStatusOverride(editItem.tinh_trang_cuoi === 'Đã hủy' ? 'Đã hủy' : '');
       setGhiChu(stripTiendoMeta(editItem.ghi_chu));
     } else {
@@ -356,21 +408,19 @@ export function XnkDonHangDrawer({
       setMaPo(`PO-${todayStr}-${randomSuffix}`);
       
       if (initialSample) {
-        setIdMau(initialSample.id_mau || '');
-        setIdYtuong(initialSample.id_y_tuong || '');
-        setSku(initialSample.sku || initialSample.sku_du_kien || '');
-        setTenSp(initialSample.ten_sp || '');
+        setLines([newPoLine({
+          id_y_tuong: initialSample.id_y_tuong || '',
+          id_mau: initialSample.id_mau || '',
+          sku: initialSample.sku || initialSample.sku_du_kien || '',
+          ten_sp: initialSample.ten_sp || '',
+          don_gia: cleanNumber(initialSample.gia_mau) || 0
+        })]);
         setTenNcc(initialSample.ten_ncc || '');
       } else {
-        setIdMau('');
-        setIdYtuong('');
-        setSku('');
-        setTenSp('');
+        setLines([newPoLine()]);
         setTenNcc('');
       }
 
-      setSoLuong(100);
-      setDonGia(0);
       setTienCoc(0);
       
       const nowInput = formatDateInput(new Date());
@@ -400,7 +450,6 @@ export function XnkDonHangDrawer({
       setDaysStage5(2);
       const end5 = addDays(end4, 2);
       setNgayKhoNhan(end5);
-      setSlgThucNhan('');
       setStage5Done(false);
 
       setKeHoachBanType('Bán ngay');
@@ -414,44 +463,65 @@ export function XnkDonHangDrawer({
     setErrorMsg('');
   }, [editItem, initialSample, isOpen]);
 
-  // Luồng 1: Chọn Ý tưởng -> Tự điền SKU, Tên SP và gợi ý Mẫu thử
-  const handleSelectIdea = (selectedIdeaId) => {
-    setIdYtuong(selectedIdeaId);
-    if (!selectedIdeaId) return;
+  // Luồng 1: Chọn Ý tưởng cho 1 dòng -> Tự điền SKU, Tên SP và gợi ý Mẫu thử
+  const handleSelectIdea = (uid, selectedIdeaId) => {
+    const line = lines.find(l => l.uid === uid);
+    if (!line) return;
+    const patch = { id_y_tuong: selectedIdeaId };
+    if (!selectedIdeaId) {
+      updateLine(uid, patch);
+      return;
+    }
     const idea = ytuongOptions.find(y => y.id_y_tuong === selectedIdeaId);
     if (idea) {
-      if (idea.sku_du_kien) setSku(idea.sku_du_kien);
-      if (idea.ten_sp) setTenSp(idea.ten_sp);
+      if (idea.sku_du_kien) patch.sku = idea.sku_du_kien;
+      if (idea.ten_sp) patch.ten_sp = idea.ten_sp;
     }
 
+    // Mẫu đang chọn không thuộc ý tưởng mới -> bỏ chọn
     const matchingSamples = approvedSamples.filter(s => s.id_y_tuong === selectedIdeaId);
+    if (line.id_mau && !matchingSamples.some(s => s.id_mau === line.id_mau)) {
+      patch.id_mau = '';
+    }
     if (matchingSamples.length === 1) {
       const singleSample = matchingSamples[0];
-      setIdMau(singleSample.id_mau);
-      if (singleSample.ten_ncc) setTenNcc(singleSample.ten_ncc);
-      if (singleSample.gia_mau && donGia === 0) setDonGia(singleSample.gia_mau);
-    } else if (matchingSamples.length === 0) {
-      setIdMau('');
+      patch.id_mau = singleSample.id_mau;
+      if (singleSample.ten_ncc && !tenNcc) setTenNcc(singleSample.ten_ncc);
+      if (singleSample.gia_mau && !cleanNumber(line.don_gia)) patch.don_gia = singleSample.gia_mau;
     }
+    updateLine(uid, patch);
   };
 
-  // Luồng 2: Chọn Mẫu thử -> Tự động liên kết luôn Ý tưởng
-  const handleSelectSample = (sampleId) => {
-    setIdMau(sampleId);
+  // Luồng 2: Chọn Mẫu thử cho 1 dòng -> Tự động liên kết luôn Ý tưởng
+  const handleSelectSample = (uid, sampleId) => {
+    const line = lines.find(l => l.uid === uid);
+    if (!line) return;
+    const patch = { id_mau: sampleId };
     const foundSample = approvedSamples.find(s => s.id_mau === sampleId);
     if (foundSample) {
-      if (foundSample.ten_ncc) setTenNcc(foundSample.ten_ncc);
-      if (foundSample.gia_mau && donGia === 0) setDonGia(foundSample.gia_mau);
+      if (foundSample.ten_ncc && !tenNcc) setTenNcc(foundSample.ten_ncc);
+      if (foundSample.gia_mau && !cleanNumber(line.don_gia)) patch.don_gia = foundSample.gia_mau;
 
       if (foundSample.id_y_tuong) {
-        setIdYtuong(foundSample.id_y_tuong);
+        patch.id_y_tuong = foundSample.id_y_tuong;
         const relatedIdea = ytuongOptions.find(y => y.id_y_tuong === foundSample.id_y_tuong);
         if (relatedIdea) {
-          if (relatedIdea.sku_du_kien) setSku(relatedIdea.sku_du_kien);
-          if (relatedIdea.ten_sp) setTenSp(relatedIdea.ten_sp);
+          if (relatedIdea.sku_du_kien) patch.sku = relatedIdea.sku_du_kien;
+          if (relatedIdea.ten_sp) patch.ten_sp = relatedIdea.ten_sp;
         }
       }
     }
+    updateLine(uid, patch);
+  };
+
+  // Chọn SKU từ danh mục sản phẩm cho 1 dòng
+  const handleSelectProduct = (uid, prod) => {
+    const line = lines.find(l => l.uid === uid);
+    if (!line || !prod) return;
+    const patch = { sku: prod.id };
+    if (prod.name) patch.ten_sp = prod.name;
+    if (prod.price && !cleanNumber(line.don_gia)) patch.don_gia = prod.price;
+    updateLine(uid, patch);
   };
 
   // -------------------------------------------------------------
@@ -649,7 +719,9 @@ export function XnkDonHangDrawer({
       if (stageNum >= 4) setStage4Done(true);
       if (stageNum >= 5) {
         setStage5Done(true);
-        if (!slgThucNhan) setSlgThucNhan(soLuong || '');
+        setLines(prev => prev.map(l => (
+          l.slg_thuc_nhan === '' || l.slg_thuc_nhan === undefined ? { ...l, slg_thuc_nhan: l.so_luong || '' } : l
+        )));
       }
       if (stageNum >= 6) setStage6Done(true);
     } else {
@@ -668,14 +740,18 @@ export function XnkDonHangDrawer({
   // Submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!tenSp.trim()) {
-      setErrorMsg('Vui lòng nhập hoặc chọn Tên sản phẩm!');
+    const filledLines = lines.filter(l => String(l.sku || '').trim() || String(l.ten_sp || '').trim() || l.id_mau || l.id_y_tuong);
+    if (filledLines.length === 0) {
+      setErrorMsg('Vui lòng thêm ít nhất 1 sản phẩm vào đơn PO!');
       return;
     }
-    if (cleanNumber(soLuong) <= 0) {
-      setErrorMsg('Số lượng đặt hàng phải lớn hơn 0!');
+    const badIdx = filledLines.findIndex(l => !String(l.ten_sp || '').trim() || !(cleanNumber(l.so_luong) > 0));
+    if (badIdx !== -1) {
+      setErrorMsg(`Sản phẩm dòng ${badIdx + 1}: cần có Tên sản phẩm và Số lượng lớn hơn 0!`);
       return;
     }
+    const summary = summarizePoLines(filledLines);
+    const tenSp = summary.ten_sp;
 
     setIsSaving(true);
     setErrorMsg('');
@@ -718,15 +794,16 @@ export function XnkDonHangDrawer({
 
       // 19 Cột chuẩn của Google Sheet XNK_DON_HANG:
       // ['ma_po', 'id_mau', 'sku', 'ten_sp', 'ten_ncc', 'so_luong', 'don_gia', 'tong_tien', 'tien_coc', 'ngay_dat_hang', 'ngay_sx_xong', 'tracking_van_chuyen', 'ngay_gui_hang', 'ngay_thong_quan', 'ngay_kho_nhan', 'slg_thuc_nhan', 'ke_hoach_ban', 'tinh_trang_cuoi', 'ghi_chu']
+      // Các cột SP ở dòng PO là bản tóm tắt; chi tiết từng SP nằm ở sheet XNK_DON_HANG_CT
       const rowValues = [
         maPo.trim(),
-        idMau.trim(),
-        sku.trim(),
-        tenSp.trim(),
+        summary.id_mau,
+        summary.sku,
+        tenSp,
         tenNcc.trim(),
-        cleanNumber(soLuong),
-        cleanNumber(donGia),
-        cleanNumber(tongTien),
+        summary.so_luong,
+        summary.don_gia,
+        summary.tong_tien,
         cleanNumber(tienCoc),
         ngayDatHang,
         ngaySxXong,
@@ -734,11 +811,48 @@ export function XnkDonHangDrawer({
         ngayDenCang, // Cột 12: Ngày đến cảng / hoàn thành chặng 3
         ngayThongQuan,
         ngayKhoNhan,
-        slgThucNhan !== '' ? cleanNumber(slgThucNhan) : '',
+        summary.slg_thuc_nhan,
         formattedKeHoach,
         finalStatus,
         finalGhiChu
       ];
+
+      // 2. Ghi chi tiết SP trước (nếu lỗi thì chưa đụng tới dòng PO)
+      // ['ma_po', 'stt', 'id_y_tuong', 'id_mau', 'sku', 'ten_sp', 'so_luong', 'don_gia', 'thanh_tien', 'slg_thuc_nhan', 'ghi_chu']
+      const lineRows = filledLines.map((l, idx) => {
+        const sl = cleanNumber(l.so_luong) || 0;
+        const dg = cleanNumber(l.don_gia) || 0;
+        return [
+          maPo.trim(),
+          idx + 1,
+          String(l.id_y_tuong || '').trim(),
+          String(l.id_mau || '').trim(),
+          String(l.sku || '').trim(),
+          String(l.ten_sp || '').trim(),
+          sl,
+          dg,
+          sl * dg,
+          l.slg_thuc_nhan !== '' && l.slg_thuc_nhan !== undefined ? cleanNumber(l.slg_thuc_nhan) : '',
+          String(l.ghi_chu || '').trim()
+        ];
+      });
+      const oldPoCode = String((editItem && editItem.ma_po) || maPo).trim().toUpperCase();
+      const oldLineRows = (poLinesMap[oldPoCode] || []).map(l => l._sheetRow).filter(Boolean);
+      try {
+        for (let i = 0; i < lineRows.length && i < oldLineRows.length; i++) {
+          await updateRow('xnk_donhang_ct', oldLineRows[i], lineRows[i]);
+        }
+        for (let i = lineRows.length; i < oldLineRows.length; i++) {
+          await deleteRow('xnk_donhang_ct', oldLineRows[i]);
+        }
+        if (lineRows.length > oldLineRows.length) {
+          await appendRows('xnk_donhang_ct', lineRows.slice(oldLineRows.length));
+        }
+      } catch (lineErr) {
+        console.error('Lỗi lưu chi tiết SP của PO:', lineErr);
+        setErrorMsg('Không lưu được danh sách sản phẩm. Kiểm tra trên Google Sheets đã có trang tính "XNK_DON_HANG_CT" (dòng 1 là tiêu đề) chưa!');
+        return;
+      }
 
       if (targetSheetRow) {
         await updateRow('xnk_donhang', targetSheetRow, rowValues);
@@ -759,7 +873,7 @@ export function XnkDonHangDrawer({
             actionType: 'THÊM',
             orderId: maPo,
             targetObject: tenSp,
-            summary: `Lên đơn PO mới ${maPo}: ${tenSp} - SLG: ${soLuong} (${finalStatus})`
+            summary: `Lên đơn PO mới ${maPo}: ${tenSp} - ${filledLines.length} SP, SLG: ${summary.so_luong} (${finalStatus})`
           });
         }
       }
@@ -831,135 +945,15 @@ export function XnkDonHangDrawer({
               <FileCheck className="w-4 h-4 text-blue-600" />
               1. Thông tin sản phẩm & Đối tác xưởng
             </span>
-            <span className="text-[11px] text-slate-400">Chọn ý tưởng hoặc mẫu thử đã duyệt</span>
+            <span className="text-[11px] text-slate-400">Mỗi dòng SP chọn ý tưởng hoặc mẫu thử đã duyệt</span>
           </div>
 
-          {/* Chọn Ý tưởng sản phẩm (Gợi ý Mẫu) */}
+          {/* Nhà cung cấp / Xưởng (chung cho cả PO) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-bold text-slate-700">
-                  💡 1. Chọn từ Ý tưởng sản phẩm
-                </label>
-                {ytuongOptions.length > 0 && (
-                  <span className="text-[11px] text-blue-600 font-semibold">
-                    {ytuongOptions.length} ý tưởng
-                  </span>
-                )}
-              </div>
-              <SuggestInput
-                value={idYtuong}
-                onSelect={(item) => handleSelectIdea(item ? item.key : '')}
-                items={ytuongOptions.map(y => ({
-                  key: y.id_y_tuong,
-                  title: `[${y.sku_du_kien || y.id_y_tuong}] ${y.ten_sp}`,
-                  subtitle: y.id_y_tuong,
-                  extra: y.trang_thai
-                }))}
-                headerLabel="Gợi ý ý tưởng"
-                placeholder="Gõ tên SP, SKU hoặc mã ý tưởng..."
-                className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition"
-              />
-            </div>
-
-            {/* Chọn Mẫu thử đã duyệt đạt chuẩn */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  📦 2. Mẫu thử đã duyệt đạt chuẩn <span className="text-emerald-600 font-semibold">(Chỉ mẫu Đạt)</span>
-                </label>
-                {suggestedSamples.length > 0 && (
-                  <span className="text-[11px] text-emerald-600 font-bold">
-                    {suggestedSamples.length} mẫu đạt
-                  </span>
-                )}
-              </div>
-              <SuggestInput
-                value={idMau}
-                onSelect={(item) => handleSelectSample(item ? item.key : '')}
-                items={suggestedSamples.map(s => ({
-                  key: s.id_mau,
-                  title: `[${s.id_mau}] NCC: ${s.ten_ncc}`,
-                  subtitle: `Ý tưởng: ${s.id_y_tuong || '—'} • Xếp hạng: ${s.danh_gia_xep_hang || 'Đạt'}`,
-                  extra: s.gia_mau ? formatCurrency(s.gia_mau) : ''
-                }))}
-                headerLabel="Gợi ý mẫu thử đạt"
-                placeholder="Gõ mã mẫu, tên NCC..."
-                className="w-full px-3 py-2 bg-emerald-50/40 hover:bg-white border border-emerald-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition"
-              />
-            </div>
-          </div>
-
-          {/* SKU, Tên sản phẩm, Nhà cung cấp */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  SKU sản phẩm <span className="text-rose-500">*</span>
-                </label>
-                {productList.length > 0 && (
-                  <span className="text-[10px] text-blue-600 font-bold">
-                    ({productList.length} SP có sẵn)
-                  </span>
-                )}
-              </div>
-              <ProductSearchCell
-                value={sku}
-                onChange={(val) => setSku(val)}
-                onSelectProduct={(prod) => {
-                  setSku(prod.id);
-                  if (prod.name) setTenSp(prod.name);
-                  if (prod.price && donGia === 0) setDonGia(prod.price);
-                }}
-                productList={productList}
-                placeholder="Gõ hoặc chọn SKU từ DS sản phẩm..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-blue-800 uppercase focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-              />
-              {productList.length > 0 && (
-                <div className="mt-1">
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const selectedId = e.target.value;
-                      if (!selectedId) return;
-                      const found = productList.find(p => p.id === selectedId);
-                      if (found) {
-                        setSku(found.id);
-                        if (found.name) setTenSp(found.name);
-                        if (found.price && donGia === 0) setDonGia(found.price);
-                      }
-                    }}
-                    className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 outline-none hover:bg-slate-100 cursor-pointer"
-                  >
-                    <option value="">-- Hoặc chọn nhanh từ danh mục ({productList.length} SP) --</option>
-                    {productList.map(p => (
-                      <option key={p.id} value={p.id}>
-                        [{p.id}] {p.name} {p.price > 0 ? `(${formatCurrency(p.price)})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Tên sản phẩm <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={tenSp}
-                onChange={(e) => setTenSp(e.target.value)}
-                placeholder="VD: Nồi chiên không dầu Lock&King..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  Nhà cung cấp / Xưởng sản xuất
+                  🏭 Nhà cung cấp / Xưởng sản xuất
                 </label>
                 {nccOptions.length > 0 && (
                   <span className="text-[10px] text-blue-600 font-bold">
@@ -976,6 +970,160 @@ export function XnkDonHangDrawer({
                 placeholder="Gõ tên NCC / xưởng..."
               />
             </div>
+            <div className="flex items-end">
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                1 PO đặt tại 1 xưởng. Mỗi dòng bên dưới là 1 sản phẩm, có thể liên kết Ý tưởng và Mẫu thử đã duyệt riêng.
+              </p>
+            </div>
+          </div>
+
+          {/* Danh sách sản phẩm trong PO */}
+          <div className="space-y-2.5">
+            {lines.map((line, idx) => {
+              const lineSamples = getSuggestedSamples(line.id_y_tuong);
+              const lineSample = line.id_mau ? approvedSamples.find(s => s.id_mau === line.id_mau) : null;
+              const nccMismatch = lineSample && lineSample.ten_ncc && tenNcc.trim() &&
+                lineSample.ten_ncc.trim().toLowerCase() !== tenNcc.trim().toLowerCase();
+              const thanhTien = (cleanNumber(line.so_luong) || 0) * (cleanNumber(line.don_gia) || 0);
+              return (
+                <div key={line.uid} className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black text-blue-700 uppercase tracking-wider">
+                      Sản phẩm #{idx + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeLine(line.uid)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                      title={lines.length > 1 ? 'Xóa sản phẩm này' : 'Xóa trắng dòng'}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Hàng 1: Ý tưởng | Mẫu thử | SKU | Tên SP */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">💡 Ý tưởng</label>
+                      <SuggestInput
+                        value={line.id_y_tuong}
+                        onSelect={(item) => handleSelectIdea(line.uid, item ? item.key : '')}
+                        items={ytuongOptions.map(y => ({
+                          key: y.id_y_tuong,
+                          title: `[${y.sku_du_kien || y.id_y_tuong}] ${y.ten_sp}`,
+                          subtitle: y.id_y_tuong,
+                          extra: y.trang_thai
+                        }))}
+                        headerLabel="Gợi ý ý tưởng"
+                        placeholder="Gõ tên SP, SKU, mã ý tưởng..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        📦 Mẫu thử đạt {line.id_y_tuong && <span className="text-emerald-600">({lineSamples.length})</span>}
+                      </label>
+                      <SuggestInput
+                        value={line.id_mau}
+                        onSelect={(item) => handleSelectSample(line.uid, item ? item.key : '')}
+                        items={lineSamples.map(s => ({
+                          key: s.id_mau,
+                          title: `[${s.id_mau}] NCC: ${s.ten_ncc}`,
+                          subtitle: `Ý tưởng: ${s.id_y_tuong || '—'} • Xếp hạng: ${s.danh_gia_xep_hang || 'Đạt'}`,
+                          extra: s.gia_mau ? formatCurrency(s.gia_mau) : ''
+                        }))}
+                        headerLabel={line.id_y_tuong ? 'Mẫu đạt của ý tưởng này' : 'Gợi ý mẫu thử đạt'}
+                        placeholder={line.id_y_tuong && lineSamples.length === 0 ? 'Ý tưởng chưa có mẫu đạt' : 'Gõ mã mẫu, tên NCC...'}
+                        className="w-full px-3 py-2 bg-emerald-50/40 border border-emerald-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        SKU sản phẩm
+                      </label>
+                      <ProductSearchCell
+                        value={line.sku}
+                        onChange={(val) => updateLine(line.uid, { sku: val })}
+                        onSelectProduct={(prod) => handleSelectProduct(line.uid, prod)}
+                        productList={productList}
+                        placeholder="Gõ SKU từ DS sản phẩm..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-blue-800 uppercase focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        Tên sản phẩm <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={line.ten_sp}
+                        onChange={(e) => updateLine(line.uid, { ten_sp: e.target.value })}
+                        placeholder="VD: Nồi chiên không dầu..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Hàng 2: SLG | Đơn giá | Thành tiền | SL nhận thực */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        Số lượng đặt <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={line.so_luong}
+                        onChange={(e) => updateLine(line.uid, { so_luong: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Đơn giá (VNĐ)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={line.don_gia}
+                        onChange={(e) => updateLine(line.uid, { don_gia: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Thành tiền</label>
+                      <div className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-black text-emerald-700">
+                        {formatCurrency(thanhTien)}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">SL nhận thực tế</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={line.slg_thuc_nhan}
+                        onChange={(e) => updateLine(line.uid, { slg_thuc_nhan: e.target.value })}
+                        placeholder="Khi kho nhận hàng"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {nccMismatch && (
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      Mẫu {lineSample.id_mau} thuộc NCC "{lineSample.ten_ncc}", khác NCC của PO ("{tenNcc}").
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={addLine}
+              className="w-full py-2 rounded-xl border-2 border-dashed border-blue-200 text-blue-700 text-xs font-bold hover:bg-blue-50 hover:border-blue-400 transition inline-flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              Thêm sản phẩm vào PO
+            </button>
           </div>
         </div>
 
@@ -986,49 +1134,31 @@ export function XnkDonHangDrawer({
           <div className="flex items-center justify-between border-b border-slate-200 pb-2">
             <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-emerald-600" />
-              2. Số lượng đặt & Tài chính PO
+              2. Tổng hợp & Tài chính PO
             </span>
-            <span className="text-[11px] text-slate-500 font-semibold">Tự động tính tổng ngân sách</span>
+            <span className="text-[11px] text-slate-500 font-semibold">Tự động cộng từ các sản phẩm</span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Số lượng đặt (cái) <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={soLuong}
-                onChange={(e) => setSoLuong(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                required
-              />
+              <label className="block text-xs font-bold text-slate-700 mb-1">Số sản phẩm</label>
+              <div className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                {lines.filter(l => String(l.ten_sp || '').trim() || String(l.sku || '').trim()).length} SP
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Đơn giá (VNĐ)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={donGia}
-                onChange={(e) => setDonGia(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-              />
+              <label className="block text-xs font-bold text-slate-700 mb-1">Tổng số lượng (cái)</label>
+              <div className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                {formatNumber(tongSoLuong)}
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Tổng giá trị PO
-              </label>
-              <input
-                type="text"
-                readOnly
-                value={formatCurrency(tongTien)}
-                className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-black text-emerald-700 focus:outline-none"
-              />
+              <label className="block text-xs font-bold text-slate-700 mb-1">Tổng giá trị PO</label>
+              <div className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-black text-emerald-700">
+                {formatCurrency(tongTien)}
+              </div>
             </div>
 
             <div>
@@ -1404,13 +1534,20 @@ export function XnkDonHangDrawer({
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-500 text-[11px] whitespace-nowrap">SLG thực nhận:</span>
-                        <input
-                          type="number"
-                          value={slgThucNhan}
-                          onChange={(e) => setSlgThucNhan(e.target.value)}
-                          placeholder="SLG thực tế nhập kho..."
-                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-black text-emerald-700"
-                        />
+                        {lines.length === 1 ? (
+                          <input
+                            type="number"
+                            value={lines[0].slg_thuc_nhan}
+                            onChange={(e) => updateLine(lines[0].uid, { slg_thuc_nhan: e.target.value })}
+                            placeholder="SLG thực tế nhập kho..."
+                            className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-black text-emerald-700"
+                          />
+                        ) : (
+                          <span className="text-xs font-black text-emerald-700 whitespace-nowrap" title="Nhập theo từng SP ở phần 1">
+                            {slgThucNhan !== '' ? formatNumber(slgThucNhan) : '—'} / {formatNumber(tongSoLuong)}
+                            <span className="ml-1 text-[10px] font-semibold text-slate-400">(nhập theo từng SP)</span>
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>

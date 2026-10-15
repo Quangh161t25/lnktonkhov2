@@ -31,6 +31,7 @@ import {
   PackageSearch,
   SlidersHorizontal
 } from 'lucide-react';
+import { buildPoLinesMap, poHasLine } from './xnkPoLines';
 
 const DEFAULT_XNK_MAU_COLUMNS = [
   { key: 'select', label: 'Chọn', width: 45, align: 'center', format: 'default' },
@@ -51,6 +52,7 @@ export function XnkMauModule({ onNavigate }) {
     xnkYtuongData, 
     xnkMauData, 
     xnkDonHangData,
+    xnkDonHangCtData,
     fetchModule, 
     deleteRow,
     loadingModules 
@@ -156,6 +158,9 @@ export function XnkMauModule({ onNavigate }) {
     })).filter(o => o.ma_po || o.ten_sp);
   }, [xnkDonHangData]);
 
+  // Chi tiết SP của từng PO (1 PO có thể nhiều SP / nhiều ý tưởng / nhiều mẫu)
+  const poLinesMap = useMemo(() => buildPoLinesMap(xnkDonHangCtData), [xnkDonHangCtData]);
+
   // Bản đồ các đơn hàng PO đã liên kết với từng mẫu thử (để khóa không cho xóa khi đã lên đơn hàng PO)
   const sampleLinkedOrdersMap = useMemo(() => {
     const map = {};
@@ -167,7 +172,7 @@ export function XnkMauModule({ onNavigate }) {
       const ideaSku = (relatedIdea?.sku_du_kien || '').trim().toLowerCase();
       const ideaName = (relatedIdea?.ten_sp || '').trim().toLowerCase();
 
-      const linked = donHangList.filter(o => {
+      const linked = donHangList.filter(order => poHasLine(order, poLinesMap, o => {
         const oMau = (o.id_mau || '').trim().toLowerCase();
         const oSku = (o.sku || '').trim().toLowerCase();
         const oName = (o.ten_sp || '').trim().toLowerCase();
@@ -178,13 +183,13 @@ export function XnkMauModule({ onNavigate }) {
         if (!oMau && ideaSku && oSku === ideaSku) return true;
         if (!oMau && ideaName && oName === ideaName) return true;
         return false;
-      });
+      }));
 
       map[sample.id_mau || sample._sheetRow] = linked;
     });
 
     return map;
-  }, [mauList, donHangList, ytuongMap]);
+  }, [mauList, donHangList, ytuongMap, poLinesMap]);
 
   // Distinct NCC options
   const nccOptions = useMemo(() => {

@@ -30,6 +30,7 @@ export function DataProvider({ children }) {
   const [xnkYtuongData, setXnkYtuongData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_YTUONG_CACHE, []));
   const [xnkMauData, setXnkMauData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_MAU_CACHE, []));
   const [xnkDonHangData, setXnkDonHangData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_DONHANG_CACHE, []));
+  const [xnkDonHangCtData, setXnkDonHangCtData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_DONHANG_CT_CACHE, []));
   const [aggregatesData, setAggregatesData] = useState(() => getLocalItem('lnk_aggregates_cache', {}));
   const [nppProductIdsData, setNppProductIdsData] = useState(() => getLocalItem('lnk_npp_products_cache', []));
 
@@ -100,6 +101,10 @@ export function DataProvider({ children }) {
         setXnkDonHangData(data);
         setLocalItem(STORAGE_KEYS.XNK_DONHANG_CACHE, data);
         break;
+      case 'xnk_donhang_ct':
+        setXnkDonHangCtData(data);
+        setLocalItem(STORAGE_KEYS.XNK_DONHANG_CT_CACHE, data);
+        break;
       default:
         break;
     }
@@ -122,6 +127,7 @@ export function DataProvider({ children }) {
       case 'xnk_ytuong': return xnkYtuongData;
       case 'xnk_mau': return xnkMauData;
       case 'xnk_donhang': return xnkDonHangData;
+      case 'xnk_donhang_ct': return xnkDonHangCtData;
       default: return [];
     }
   };
@@ -174,6 +180,11 @@ export function DataProvider({ children }) {
         fetchModule('xnk_donhang', force)
       ]);
       return { ytuong, mau, donhang };
+    }
+
+    // Chi tiết SP của PO luôn tải kèm đơn hàng PO để giữ liên kết Ý tưởng / Mẫu thử
+    if (moduleName === 'xnk_donhang') {
+      fetchModule('xnk_donhang_ct', force);
     }
 
     const config = SIMPLE_SHEET_MODULES[moduleName];
@@ -793,6 +804,7 @@ export function DataProvider({ children }) {
         xnkYtuongData,
         xnkMauData,
         xnkDonHangData,
+        xnkDonHangCtData,
         aggregatesData,
         nppProductIdsData,
         fetchAggregatesData,

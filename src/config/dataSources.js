@@ -90,5 +90,12 @@ export const SIMPLE_SHEET_MODULES = {
     range: 'A1:S30000',
     cacheKey: 'erp_xnk_donhang_cache',
     columns: ['ma_po', 'id_mau', 'sku', 'ten_sp', 'ten_ncc', 'so_luong', 'don_gia', 'tong_tien', 'tien_coc', 'ngay_dat_hang', 'ngay_sx_xong', 'tracking_van_chuyen', 'ngay_gui_hang', 'ngay_thong_quan', 'ngay_kho_nhan', 'slg_thuc_nhan', 'ke_hoach_ban', 'tinh_trang_cuoi', 'ghi_chu']
+  },
+  // Chi tiết sản phẩm của PO (1 PO - nhiều dòng SP)
+  xnk_donhang_ct: {
+    sheetName: () => CONFIG.xnkDonHangCtSheetName || 'XNK_DON_HANG_CT',
+    range: 'A1:K60000',
+    cacheKey: 'erp_xnk_donhang_ct_cache',
+    columns: ['ma_po', 'stt', 'id_y_tuong', 'id_mau', 'sku', 'ten_sp', 'so_luong', 'don_gia', 'thanh_tien', 'slg_thuc_nhan', 'ghi_chu']
   }
 };

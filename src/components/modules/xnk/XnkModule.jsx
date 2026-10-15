@@ -45,6 +45,7 @@ import {
   ArrowLeft,
   ArrowUpDown
 } from 'lucide-react';
+import { buildPoLinesMap, poHasLine, deletePoLines } from './xnkPoLines';
 
 const TABS = [
   { key: 'ytuong', label: '1. Ý tưởng sản phẩm', icon: Lightbulb },
@@ -58,6 +59,7 @@ export function XnkModule({ onNavigate }) {
     xnkYtuongData, 
     xnkMauData, 
     xnkDonHangData, 
+    xnkDonHangCtData,
     fetchModule, 
     deleteRow,
     loadingModules 
@@ -201,6 +203,9 @@ export function XnkModule({ onNavigate }) {
     return map;
   }, [parsedYtuongList]);
 
+  // Chi tiết SP của từng PO (1 PO có thể nhiều SP / nhiều ý tưởng / nhiều mẫu)
+  const poLinesMap = useMemo(() => buildPoLinesMap(xnkDonHangCtData), [xnkDonHangCtData]);
+
   // Bản đồ đơn hàng PO liên kết với từng ý tưởng (khóa không cho xóa khi đã lên đơn hàng PO)
   const ideaLinkedOrdersMap = useMemo(() => {
     const map = {};
@@ -221,22 +226,23 @@ export function XnkModule({ onNavigate }) {
       });
 
       // Các đơn hàng PO phát sinh từ ý tưởng này
-      const linked = parsedDonHangList.filter(o => {
+      const linked = parsedDonHangList.filter(order => poHasLine(order, poLinesMap, o => {
         const oMau = (o.id_mau || '').trim().toLowerCase();
         const oSku = (o.sku || '').trim().toLowerCase();
         const oName = (o.ten_sp || '').trim().toLowerCase();
         return (
+          (ideaId && (o.id_y_tuong || '').trim().toLowerCase() === ideaId) ||
           (oMau && sampleIds.has(oMau)) ||
           (ideaSku && oSku === ideaSku) ||
           (ideaName && oName === ideaName)
         );
-      });
+      }));
 
       map[idea.id_y_tuong || idea._sheetRow] = linked;
     });
 
     return map;
-  }, [parsedYtuongList, parsedMauList, parsedDonHangList]);
+  }, [parsedYtuongList, parsedMauList, parsedDonHangList, poLinesMap]);
 
   // Bản đồ đơn hàng PO liên kết với từng mẫu thử (khóa không cho xóa khi đã lên đơn hàng PO)
   const sampleLinkedOrdersMap = useMemo(() => {
@@ -249,7 +255,7 @@ export function XnkModule({ onNavigate }) {
       const ideaSku = (relatedIdea?.sku_du_kien || '').trim().toLowerCase();
       const ideaName = (relatedIdea?.ten_sp || '').trim().toLowerCase();
 
-      const linked = parsedDonHangList.filter(o => {
+      const linked = parsedDonHangList.filter(order => poHasLine(order, poLinesMap, o => {
         const oMau = (o.id_mau || '').trim().toLowerCase();
         const oSku = (o.sku || '').trim().toLowerCase();
         const oName = (o.ten_sp || '').trim().toLowerCase();
@@ -260,13 +266,13 @@ export function XnkModule({ onNavigate }) {
         if (!oMau && ideaSku && oSku === ideaSku) return true;
         if (!oMau && ideaName && oName === ideaName) return true;
         return false;
-      });
+      }));
 
       map[sample.id_mau || sample._sheetRow] = linked;
     });
 
     return map;
-  }, [parsedMauList, parsedDonHangList, ytuongMap]);
+  }, [parsedMauList, parsedDonHangList, ytuongMap, poLinesMap]);
 
   // Unique authors & NCC options
   const authorOptions = useMemo(() => {
@@ -475,6 +481,7 @@ export function XnkModule({ onNavigate }) {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa bản ghi [${identifier}]?`)) return;
     try {
       await deleteRow(moduleSheetKey, sheetRow);
+      if (moduleSheetKey === 'xnk_donhang') await deletePoLines(identifier, poLinesMap, deleteRow);
     } catch (err) {
       console.error('Lỗi xóa:', err);
       alert('Không thể xóa dòng dữ liệu. Vui lòng thử lại!');

@@ -34,6 +34,7 @@ import {
   Building2,
   SlidersHorizontal
 } from 'lucide-react';
+import { buildPoLinesMap, deletePoLines } from './xnkPoLines';
 
 const DEFAULT_XNK_DONHANG_COLUMNS = [
   { key: 'select', label: 'Chọn', width: 45, align: 'center', format: 'default' },
@@ -57,6 +58,7 @@ export function XnkDonHangModule({ onNavigate }) {
   const { 
     xnkMauData, 
     xnkDonHangData, 
+    xnkDonHangCtData,
     fetchModule, 
     deleteRow,
     loadingModules 
@@ -219,10 +221,13 @@ export function XnkDonHangModule({ onNavigate }) {
     exportToExcel([headers, ...rows], 'XNK_DON_HANG_PO.xlsx', 'DON_HANG_PO');
   };
 
+  const poLinesMap = useMemo(() => buildPoLinesMap(xnkDonHangCtData), [xnkDonHangCtData]);
+
   const handleDelete = async (sheetRow, maPo) => {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa đơn hàng PO [${maPo}]?`)) return;
     try {
       await deleteRow('xnk_donhang', sheetRow);
+      await deletePoLines(maPo, poLinesMap, deleteRow);
     } catch (err) {
       console.error('Lỗi xóa:', err);
       alert('Không thể xóa dòng dữ liệu. Vui lòng thử lại!');

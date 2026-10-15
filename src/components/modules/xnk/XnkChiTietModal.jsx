@@ -34,6 +34,7 @@ import {
   Square,
   Maximize2
 } from 'lucide-react';
+import { buildPoLinesMap, getPoLines, poHasLine } from './xnkPoLines';
 
 export function XnkChiTietModal({
   isOpen,
@@ -51,6 +52,7 @@ export function XnkChiTietModal({
     xnkYtuongData, 
     xnkMauData, 
     xnkDonHangData, 
+    xnkDonHangCtData,
     usersData 
   } = useData();
 
@@ -124,6 +126,9 @@ export function XnkChiTietModal({
     })).filter(o => o.ma_po || o.ten_sp);
   }, [xnkDonHangData]);
 
+  // Chi tiết SP của từng PO (1 PO có thể nhiều SP / nhiều ý tưởng / nhiều mẫu)
+  const poLinesMap = useMemo(() => buildPoLinesMap(xnkDonHangCtData), [xnkDonHangCtData]);
+
   // 4. Tìm các thực thể liên kết tương ứng
   const currentIdea = useMemo(() => {
     if (!item) return null;
@@ -138,7 +143,15 @@ export function XnkChiTietModal({
       }) || null;
     }
     if (type === 'donhang' || type === 'tiendo') {
-      const targetMau = String(item.id_mau || '').trim();
+      // PO nhiều SP: lấy ý tưởng của dòng SP đầu tiên tìm được
+      const poLines = getPoLines(item, poLinesMap);
+      const lineIdeaId = String(poLines.find(l => l.id_y_tuong)?.id_y_tuong || '').trim();
+      if (lineIdeaId) {
+        const found = allIdeas.find(i => String(i.id_y_tuong || '').trim() === lineIdeaId);
+        if (found) return found;
+      }
+      const firstLine = poLines[0] || item;
+      const targetMau = String(firstLine.id_mau || '').trim();
       if (targetMau) {
         const foundSample = allSamples.find(s => String(s.id_mau || '').trim() === targetMau);
         const sampleIdeaId = String(foundSample?.id_y_tuong || '').trim();
@@ -151,12 +164,12 @@ export function XnkChiTietModal({
           if (found) return found;
         }
       }
-      const targetSku = String(item.sku || '').trim();
+      const targetSku = String(firstLine.sku || '').trim();
       if (targetSku) {
         const found = allIdeas.find(i => i.sku_du_kien && String(i.sku_du_kien).trim() === targetSku);
         if (found) return found;
       }
-      const targetName = String(item.ten_sp || '').trim().toLowerCase();
+      const targetName = String(firstLine.ten_sp || '').trim().toLowerCase();
       if (targetName) {
         const found = allIdeas.find(i => i.ten_sp && String(i.ten_sp).trim().toLowerCase() === targetName);
         if (found) return found;
@@ -164,7 +177,7 @@ export function XnkChiTietModal({
       return null;
     }
     return null;
-  }, [item, type, allIdeas, allSamples]);
+  }, [item, type, allIdeas, allSamples, poLinesMap]);
 
   const relatedSamples = useMemo(() => {
     if (!item) return [];
@@ -179,9 +192,9 @@ export function XnkChiTietModal({
       });
     }
     if (type === 'donhang' || type === 'tiendo') {
-      const targetMau = String(item.id_mau || '').trim();
-      if (targetMau) {
-        const found = allSamples.filter(s => String(s.id_mau || '').trim() === targetMau);
+      const lineMauIds = new Set(getPoLines(item, poLinesMap).map(l => String(l.id_mau || '').trim()).filter(Boolean));
+      if (lineMauIds.size > 0) {
+        const found = allSamples.filter(s => lineMauIds.has(String(s.id_mau || '').trim()));
         if (found.length > 0) return found;
       }
       if (currentIdea) {
@@ -203,7 +216,7 @@ export function XnkChiTietModal({
       return allSamples.filter(s => String(s.ten_ncc || '').trim().toLowerCase() === nccName);
     }
     return [];
-  }, [item, type, allSamples, currentIdea]);
+  }, [item, type, allSamples, currentIdea, poLinesMap]);
 
   const relatedOrders = useMemo(() => {
     if (!item) return [];
@@ -218,22 +231,24 @@ export function XnkChiTietModal({
       const sampleIds = new Set(relatedSamples.map(s => String(s.id_mau || '').trim()).filter(Boolean));
       const targetSku = String(item.sku_du_kien || '').trim();
       const targetName = String(item.ten_sp || '').trim().toLowerCase();
-      return allOrders.filter(o => {
+      const targetIdeaId = String(item.id_y_tuong || '').trim();
+      return allOrders.filter(order => poHasLine(order, poLinesMap, o => {
         const oMau = String(o.id_mau || '').trim();
         const oSku = String(o.sku || '').trim();
         const oName = String(o.ten_sp || '').trim().toLowerCase();
         return (
+          (targetIdeaId && String(o.id_y_tuong || '').trim() === targetIdeaId) ||
           (oMau && sampleIds.has(oMau)) ||
           (targetSku && oSku === targetSku) ||
           (targetName && oName === targetName)
         );
-      });
+      }));
     }
     if (type === 'mau') {
       const sampleId = String(item.id_mau || '').trim();
       const ideaSku = String(currentIdea?.sku_du_kien || '').trim();
       const ideaName = String(currentIdea?.ten_sp || '').trim().toLowerCase();
-      return allOrders.filter(o => {
+      return allOrders.filter(order => poHasLine(order, poLinesMap, o => {
         const oMau = String(o.id_mau || '').trim();
         const oSku = String(o.sku || '').trim();
         const oName = String(o.ten_sp || '').trim().toLowerCase();
@@ -242,7 +257,7 @@ export function XnkChiTietModal({
           (ideaSku && oSku === ideaSku) ||
           (ideaName && oName === ideaName)
         );
-      });
+      }));
     }
     if (type === 'ncc') {
       const nccName = String(item.name || item.ten_ncc || item.ho_ten || '').trim().toLowerCase();
@@ -250,7 +265,7 @@ export function XnkChiTietModal({
       return allOrders.filter(o => String(o.ten_ncc || '').trim().toLowerCase() === nccName);
     }
     return [];
-  }, [item, type, allOrders, relatedSamples, currentIdea]);
+  }, [item, type, allOrders, relatedSamples, currentIdea, poLinesMap]);
 
   // Selected PO for Timeline View
   const selectedPo = useMemo(() => {

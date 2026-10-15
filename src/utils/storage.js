@@ -18,7 +18,8 @@ export const STORAGE_KEYS = {
   LICHSU_CACHE: 'erp_lichsu_cache',
   XNK_YTUONG_CACHE: 'erp_xnk_ytuong_cache',
   XNK_MAU_CACHE: 'erp_xnk_mau_cache',
-  XNK_DONHANG_CACHE: 'erp_xnk_donhang_cache'
+  XNK_DONHANG_CACHE: 'erp_xnk_donhang_cache',
+  XNK_DONHANG_CT_CACHE: 'erp_xnk_donhang_ct_cache'
 };
 
 export function getLocalItem(key, defaultValue = null) {

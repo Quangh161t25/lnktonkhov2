@@ -32,6 +32,7 @@ import {
   XCircle,
   SlidersHorizontal
 } from 'lucide-react';
+import { buildPoLinesMap, poHasLine } from './xnkPoLines';
 
 const DEFAULT_XNK_YTUONG_COLUMNS = [
   { key: 'select', label: 'Chọn', width: 45, align: 'center', format: 'default' },
@@ -51,6 +52,7 @@ export function XnkYtuongModule({ onNavigate }) {
     xnkYtuongData, 
     xnkMauData,
     xnkDonHangData,
+    xnkDonHangCtData,
     fetchModule, 
     deleteRow,
     loadingModules 
@@ -146,6 +148,9 @@ export function XnkYtuongModule({ onNavigate }) {
     })).filter(o => o.ma_po || o.ten_sp);
   }, [xnkDonHangData]);
 
+  // Chi tiết SP của từng PO (1 PO có thể nhiều SP / nhiều ý tưởng / nhiều mẫu)
+  const poLinesMap = useMemo(() => buildPoLinesMap(xnkDonHangCtData), [xnkDonHangCtData]);
+
   // Bản đồ các đơn hàng PO đã liên kết với từng ý tưởng (để khóa không cho xóa khi đã lên đơn hàng PO)
   const ideaLinkedOrdersMap = useMemo(() => {
     const map = {};
@@ -166,22 +171,23 @@ export function XnkYtuongModule({ onNavigate }) {
       });
 
       // Các đơn hàng PO phát sinh từ ý tưởng này (theo mã mẫu hoặc theo SKU hoặc theo Tên SP)
-      const linked = donHangList.filter(o => {
+      const linked = donHangList.filter(order => poHasLine(order, poLinesMap, o => {
         const oMau = (o.id_mau || '').trim().toLowerCase();
         const oSku = (o.sku || '').trim().toLowerCase();
         const oName = (o.ten_sp || '').trim().toLowerCase();
         return (
+          (ideaId && (o.id_y_tuong || '').trim().toLowerCase() === ideaId) ||
           (oMau && sampleIds.has(oMau)) ||
           (ideaSku && oSku === ideaSku) ||
           (ideaName && oName === ideaName)
         );
-      });
+      }));
 
       map[idea.id_y_tuong || idea._sheetRow] = linked;
     });
 
     return map;
-  }, [ytuongList, mauList, donHangList]);
+  }, [ytuongList, mauList, donHangList, poLinesMap]);
 
   // Distinct authors list for filter dropdown
   const authorOptions = useMemo(() => {
