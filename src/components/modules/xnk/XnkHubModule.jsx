@@ -14,10 +14,14 @@ import {
   Lightbulb,
   Clock,
   Sparkles,
-  Ship
+  Ship,
+  CalendarClock,
+  TrendingUp
 } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 
 export function XnkHubModule({ onNavigate }) {
+  const { canAccessModule } = useAuth();
   const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'FAVORITES'
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState(() => {
@@ -108,6 +112,30 @@ export function XnkHubModule({ onNavigate }) {
           helpText: 'Danh sách thông tin liên lạc và hồ sơ đối tác xưởng sản xuất, nhà cung cấp.'
         }
       ]
+    },
+    {
+      groupKey: 'kehoachnhap',
+      groupTitle: 'Kế hoạch nhập hàng',
+      cards: [
+        {
+          id: 'xnk_dubaonhap',
+          title: 'Dự báo nhập hàng',
+          desc: 'Dự báo điểm đặt hàng (ROP), số ngày hết hàng và lượng cần nhập.',
+          icon: TrendingUp,
+          iconBg: 'bg-purple-100 text-purple-600',
+          route: 'xnk_dubaonhap',
+          helpText: 'Tính lượng cần nhập dựa trên tồn kho và tốc độ bán 3 tháng cao nhất, làm căn cứ lên ý tưởng / PO.'
+        },
+        {
+          id: 'xnk_dukien',
+          title: 'Dự kiến hàng về',
+          desc: 'Theo dõi các đơn hàng dự kiến về kho và trạng thái giao hàng.',
+          icon: CalendarClock,
+          iconBg: 'bg-amber-100 text-amber-600',
+          route: 'xnk_dukien',
+          helpText: 'Danh sách hàng đang trên đường, ngày dự kiến về và tình trạng kiểm định nhập kho.'
+        }
+      ]
     }
   ];
 
@@ -117,6 +145,9 @@ export function XnkHubModule({ onNavigate }) {
 
     return groups.map(g => {
       const matchedCards = g.cards.filter(c => {
+        if (!canAccessModule(c.route)) {
+          return false;
+        }
         if (activeFilter === 'FAVORITES' && !favorites.includes(c.id)) {
           return false;
         }
@@ -133,7 +164,7 @@ export function XnkHubModule({ onNavigate }) {
         cards: matchedCards
       };
     }).filter(g => g.cards.length > 0);
-  }, [groups, searchQuery, activeFilter, favorites]);
+  }, [groups, searchQuery, activeFilter, favorites, canAccessModule]);
 
   return (
     <div className="space-y-5">

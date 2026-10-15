@@ -56,7 +56,8 @@ export function Sidebar({ activeModule, onSelectModule, isCollapsed, onToggleCol
   const { canAccessModule } = useAuth();
   const { appSettings } = useSettings();
 
-  const accessibleModules = MODULE_DEFINITIONS.filter(m => canAccessModule(m.key));
+  // Module con (vd: Dự kiến hàng về, Dự báo nhập hàng) nằm trong phân hệ cha, không hiện ở menu chính
+  const accessibleModules = MODULE_DEFINITIONS.filter(m => !m.parent && canAccessModule(m.key));
 
   return (
     <aside

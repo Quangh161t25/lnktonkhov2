@@ -59,6 +59,8 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
   const badgeTitle = currentModDef.name;
 
   const handleRefresh = async () => {
+    // Module con trong XNK dùng chung dữ liệu với module gốc
+    const dataModule = { xnk_dukien: 'dukien', xnk_dubaonhap: 'dubaonhap' }[activeModule] || activeModule;
     setRefreshing(true);
     try {
       if (activeModule === 'home') {
@@ -68,13 +70,13 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
           fetchModule(activeModule, true),
           fetchAggregatesData ? fetchAggregatesData({ force: true }) : Promise.resolve()
         ]);
-      } else if (activeModule === 'sanphamkho' || activeModule === 'dubaonhap') {
+      } else if (dataModule === 'sanphamkho' || dataModule === 'dubaonhap') {
         await Promise.all([
-          fetchModule(activeModule, true),
+          fetchModule(dataModule, true),
           fetchModule('sanphamkho', true)
         ]);
       } else {
-        await fetchModule(activeModule, true);
+        await fetchModule(dataModule, true);
       }
     } catch (e) {
       console.error("Refresh error:", e);
@@ -154,6 +156,8 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
                     {activeModule === 'xnk_donhang' && 'Đơn đặt hàng'}
                     {activeModule === 'xnk_tiendo' && 'Tiến độ 5 chặng XNK'}
                     {activeModule === 'xnk_ncc' && 'Danh sách NCC'}
+                    {activeModule === 'xnk_dukien' && 'Dự kiến hàng về'}
+                    {activeModule === 'xnk_dubaonhap' && 'Dự báo nhập hàng'}
                   </span>
                 </>
               ) : (

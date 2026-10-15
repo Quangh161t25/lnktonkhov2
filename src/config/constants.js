@@ -19,6 +19,7 @@ export const CONFIG = {
   xnkYtuongSheetName: "XNK_Y_TUONG",
   xnkMauSheetName: "XNK_MAU",
   xnkDonHangSheetName: "XNK_DON_HANG",
+  xnkDonHangCtSheetName: "XNK_DON_HANG_CT",
   permissionsFile: "permissions.json"
 };
 
@@ -63,7 +64,7 @@ export const MODULE_DEFINITIONS = [
   { key: 'home', name: 'Trang chủ', desc: 'Trung tâm điều hướng lối tắt hệ thống', icon: 'Home', color: 'blue' },
   { key: 'tongquan', name: 'Tổng quan', desc: 'Báo cáo & phân tích số liệu xuất nhập tồn', icon: 'BarChart3', color: 'indigo' },
   { key: 'nhap', name: 'Danh sách nhập', desc: 'Xem & quản lý phiếu nhập kho', icon: 'ArrowDownToLine', color: 'blue' },
-  { key: 'dukien', name: 'Dự kiến hàng về', desc: 'Theo dõi đơn hàng dự kiến về kho', icon: 'CalendarClock', color: 'amber' },
+  { key: 'dukien', name: 'Dự kiến hàng về', desc: 'Theo dõi đơn hàng dự kiến về kho (trong phân hệ XNK)', icon: 'CalendarClock', color: 'amber', parent: 'xnk' },
   { key: 'xuat', name: 'Danh sách xuất', desc: 'Xem & quản lý phiếu xuất kho', icon: 'ArrowUpFromLine', color: 'orange' },
   { key: 'chuyenkho', name: 'Điều chuyển kho', desc: 'Điều chuyển hàng giữa các kho', icon: 'ArrowLeftRight', color: 'cyan' },
   { key: 'sanpham', name: 'Danh sách sản phẩm', desc: 'Danh mục sản phẩm & tồn kho tổng', icon: 'Package', color: 'emerald' },
@@ -74,7 +75,7 @@ export const MODULE_DEFINITIONS = [
   { key: 'doisoat', name: 'Đối soát', desc: 'Đối chiếu tồn hệ thống với MISA', icon: 'Scale', color: 'rose' },
   { key: 'nhanvien', name: 'Danh sách nhân viên', desc: 'Danh bạ nhân viên từ DSNV', icon: 'Users', color: 'sky' },
   { key: 'khachhang', name: 'Danh sách khách hàng', desc: 'Khách hàng NPP và NCC', icon: 'UserCheck', color: 'violet' },
-  { key: 'dubaonhap', name: 'Dự báo nhập hàng', desc: 'Dự báo điểm đặt hàng (ROP), số ngày hết hàng và lượng cần nhập', icon: 'TrendingUp', color: 'purple' },
+  { key: 'dubaonhap', name: 'Dự báo nhập hàng', desc: 'Dự báo điểm đặt hàng (ROP), số ngày hết hàng và lượng cần nhập (trong phân hệ XNK)', icon: 'TrendingUp', color: 'purple', parent: 'xnk' },
   { key: 'xnk', name: 'Xuất Nhập Khẩu', desc: 'Quản lý ý tưởng SP, đặt mẫu và tiến độ đơn hàng', icon: 'Ship', color: 'blue' },
   { key: 'caidat', name: 'Cài đặt & Phân quyền', desc: 'Quản trị hệ thống & thiết kế phân quyền', icon: 'Settings', color: 'slate' }
 ];

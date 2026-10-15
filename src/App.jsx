@@ -33,9 +33,10 @@ import { XnkNccModule } from './components/modules/xnk/XnkNccModule';
 import { CaidatModule } from './components/modules/caidat/CaidatModule';
 
 const VALID_MODULES = [
-  'home', 'tongquan', 'nhap', 'dukien', 'xuat', 'chuyenkho', 'sanpham',
+  'home', 'tongquan', 'nhap', 'xuat', 'chuyenkho', 'sanpham',
   'sanphamkho', 'cngiasp', 'lendon', 'ton_npp', 'doisoat', 'nhanvien', 'khachhang',
-  'dubaonhap', 'xnk', 'xnk_tongquan', 'xnk_ytuong', 'xnk_mau', 'xnk_donhang', 'xnk_tiendo', 'xnk_ncc', 'caidat'
+  'xnk', 'xnk_tongquan', 'xnk_ytuong', 'xnk_mau', 'xnk_donhang', 'xnk_tiendo', 'xnk_ncc',
+  'xnk_dukien', 'xnk_dubaonhap', 'caidat'
 ];
 
 function getModuleFromLocation() {
@@ -46,6 +47,9 @@ function getModuleFromLocation() {
   if (cleanPath === 'xnk/don_hang' || cleanPath === 'xnk/donhang') return 'xnk_donhang';
   if (cleanPath === 'xnk/tien_do' || cleanPath === 'xnk/tiendo') return 'xnk_tiendo';
   if (cleanPath === 'xnk/ncc') return 'xnk_ncc';
+  // Dự kiến hàng về & Dự báo nhập hàng đã chuyển vào XNK (link cũ /dukien, /dubaonhap vẫn dùng được)
+  if (cleanPath === 'xnk/du_kien' || cleanPath === 'dukien') return 'xnk_dukien';
+  if (cleanPath === 'xnk/du_bao_nhap' || cleanPath === 'dubaonhap') return 'xnk_dubaonhap';
   if (cleanPath === 'xnk') return 'xnk';
 
   const first = cleanPath.split('/')[0];
@@ -61,6 +65,8 @@ function getPathForModule(mod) {
   if (mod === 'xnk_donhang') return '/xnk/don_hang';
   if (mod === 'xnk_tiendo') return '/xnk/tien_do';
   if (mod === 'xnk_ncc') return '/xnk/ncc';
+  if (mod === 'xnk_dukien') return '/xnk/du_kien';
+  if (mod === 'xnk_dubaonhap') return '/xnk/du_bao_nhap';
   return `/${mod}`;
 }
 
@@ -112,7 +118,7 @@ export function App() {
       }
     } else {
       const allowed = getAllowedModules();
-      if (!allowed.includes(activeModule) && !activeModule.startsWith('xnk_')) {
+      if (!canAccessModule(activeModule)) {
         const fallback = allowed.includes('home') ? 'home' : (allowed[0] || 'home');
         setActiveModule(fallback);
         const targetPath = getPathForModule(fallback);
@@ -124,7 +130,7 @@ export function App() {
         }
       }
     }
-  }, [currentUser, activeModule, getAllowedModules]);
+  }, [currentUser, activeModule, getAllowedModules, canAccessModule]);
 
   const handleNavigateWithFilter = (moduleName, params) => {
     navigateToModule(moduleName, params);
@@ -166,7 +172,7 @@ export function App() {
 
             {activeModule === 'nhap' && <NhapModule />}
 
-            {activeModule === 'dukien' && (
+            {activeModule === 'xnk_dukien' && (
               <DukienModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
 
@@ -193,7 +199,7 @@ export function App() {
 
             {activeModule === 'khachhang' && <KhachhangModule />}
 
-            {activeModule === 'dubaonhap' && (
+            {activeModule === 'xnk_dubaonhap' && (
               <DubaonhapModule onNavigate={(mod) => navigateToModule(mod)} />
             )}
 

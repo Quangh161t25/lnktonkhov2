@@ -175,7 +175,7 @@ export function HomeModule({ onNavigate }) {
 
   // Accessible modules excluding 'home'
   const accessibleModules = useMemo(() => {
-    return MODULE_DEFINITIONS.filter(m => m.key !== 'home' && canAccessModule(m.key));
+    return MODULE_DEFINITIONS.filter(m => m.key !== 'home' && !m.parent && canAccessModule(m.key));
   }, [canAccessModule]);
 
   // Filter modules by search

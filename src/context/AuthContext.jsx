@@ -201,6 +201,11 @@ export function AuthProvider({ children }) {
     if (roleKey === 'ADMIN') return true;
     const allowed = getAllowedModules();
     if (allowed.includes(moduleKey)) return true;
+    // Dự kiến hàng về & Dự báo nhập hàng nằm trong XNK nhưng vẫn dùng quyền riêng
+    if (moduleKey === 'xnk_dukien') return allowed.includes('dukien');
+    if (moduleKey === 'xnk_dubaonhap') return allowed.includes('dubaonhap');
+    // Có quyền 1 trong 2 module trên thì được vào trang XNK để mở chúng
+    if (moduleKey === 'xnk' && (allowed.includes('dukien') || allowed.includes('dubaonhap'))) return true;
     // Tự động cho phép truy cập module con XNK nếu tài khoản có quyền xnk
     if (moduleKey.startsWith('xnk_') && allowed.includes('xnk')) return true;
     return false;
