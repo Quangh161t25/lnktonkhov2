@@ -44,7 +44,7 @@ export function XnkHeaderNav({
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Quy trình khép kín: Ý tưởng ➔ Đặt mẫu thử & NCC ➔ Đặt hàng PO ➔ Theo dõi 5 chặng tiến độ
+              Quy trình khép kín: Ý tưởng ➔ Đặt mẫu thử & NCC ➔ Đặt hàng PO ➔ Theo dõi 8 chặng tiến độ
             </p>
           </div>
         </div>

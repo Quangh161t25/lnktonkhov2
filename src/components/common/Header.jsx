@@ -154,7 +154,7 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
                     {activeModule === 'xnk_ytuong' && 'Phiếu đề xuất / Ý tưởng'}
                     {activeModule === 'xnk_mau' && 'Đặt mẫu & Đánh giá NCC'}
                     {activeModule === 'xnk_donhang' && 'Đơn đặt hàng'}
-                    {activeModule === 'xnk_tiendo' && 'Tiến độ 5 chặng XNK'}
+                    {activeModule === 'xnk_tiendo' && 'Tiến độ 8 chặng XNK'}
                     {activeModule === 'xnk_ncc' && 'Danh sách NCC'}
                     {activeModule === 'xnk_dukien' && 'Dự kiến hàng về'}
                     {activeModule === 'xnk_dubaonhap' && 'Dự báo nhập hàng'}

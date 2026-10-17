@@ -97,5 +97,12 @@ export const SIMPLE_SHEET_MODULES = {
     range: 'A1:K60000',
     cacheKey: 'erp_xnk_donhang_ct_cache',
     columns: ['ma_po', 'stt', 'id_y_tuong', 'id_mau', 'sku', 'ten_sp', 'so_luong', 'don_gia', 'thanh_tien', 'slg_thuc_nhan', 'ghi_chu']
+  },
+  // Lô vận chuyển của PO (chặng Vận chuyển QT -> Thông quan -> Kho nhận tính riêng từng lô)
+  xnk_lohang: {
+    sheetName: () => CONFIG.xnkLoHangSheetName || 'XNK_LO_HANG',
+    range: 'A1:Q30000',
+    cacheKey: 'erp_xnk_lohang_cache',
+    columns: ['ma_po', 'ma_lo', 'tracking', 'cuoc_phi', 'ngay_gui', 'ngay_den_cang', 'ngay_thong_quan', 'ngay_kho_nhan', 'vc_xong', 'tq_xong', 'kho_xong', 'chi_tiet_sl', 'ghi_chu', 'ban_xong', 'ngay_mo_ban', 'cua_khau', 'hinh_thuc_ban']
   }
 };

@@ -54,7 +54,7 @@ export function XnkHubModule({ onNavigate }) {
         {
           id: 'xnk_tongquan',
           title: 'Tổng quan XNK',
-          desc: 'Giao diện tổng hợp toàn diện: Ý tưởng, Đặt mẫu, Đơn hàng PO & Tiến độ 5 chặng.',
+          desc: 'Giao diện tổng hợp toàn diện: Ý tưởng, Đặt mẫu, Đơn hàng PO & Tiến độ 8 chặng.',
           icon: Ship,
           iconBg: 'bg-blue-100 text-blue-600',
           route: 'xnk_tongquan',
@@ -72,7 +72,7 @@ export function XnkHubModule({ onNavigate }) {
         {
           id: 'xnk_donhang',
           title: 'Đơn đặt hàng (PO)',
-          desc: 'Tạo PO, gửi đối tác xưởng, theo dõi 5 chặng tiến độ & trạng thái.',
+          desc: 'Tạo PO, gửi đối tác xưởng, theo dõi 8 chặng tiến độ & trạng thái.',
           icon: ShoppingCart,
           iconBg: 'bg-indigo-100 text-indigo-600',
           route: 'xnk_donhang',
@@ -80,8 +80,8 @@ export function XnkHubModule({ onNavigate }) {
         },
         {
           id: 'xnk_tiendo',
-          title: 'Báo cáo & Tiến độ 5 chặng',
-          desc: 'Thống kê quy trình: Cọc ➔ SX ➔ Vận chuyển QT ➔ Hải quan ➔ Về kho.',
+          title: 'Báo cáo & Tiến độ 8 chặng',
+          desc: 'Thống kê quy trình: Cọc ➔ Duyệt TK ➔ SX ➔ Chờ ship ➔ Vận chuyển QT ➔ Hải quan ➔ Về kho.',
           icon: BarChart3,
           iconBg: 'bg-purple-100 text-purple-600',
           route: 'xnk_tiendo',

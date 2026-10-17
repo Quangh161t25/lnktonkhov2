@@ -31,6 +31,7 @@ export function DataProvider({ children }) {
   const [xnkMauData, setXnkMauData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_MAU_CACHE, []));
   const [xnkDonHangData, setXnkDonHangData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_DONHANG_CACHE, []));
   const [xnkDonHangCtData, setXnkDonHangCtData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_DONHANG_CT_CACHE, []));
+  const [xnkLoHangData, setXnkLoHangData] = useState(() => getLocalItem(STORAGE_KEYS.XNK_LOHANG_CACHE, []));
   const [aggregatesData, setAggregatesData] = useState(() => getLocalItem('lnk_aggregates_cache', {}));
   const [nppProductIdsData, setNppProductIdsData] = useState(() => getLocalItem('lnk_npp_products_cache', []));
 
@@ -105,6 +106,10 @@ export function DataProvider({ children }) {
         setXnkDonHangCtData(data);
         setLocalItem(STORAGE_KEYS.XNK_DONHANG_CT_CACHE, data);
         break;
+      case 'xnk_lohang':
+        setXnkLoHangData(data);
+        setLocalItem(STORAGE_KEYS.XNK_LOHANG_CACHE, data);
+        break;
       default:
         break;
     }
@@ -128,6 +133,7 @@ export function DataProvider({ children }) {
       case 'xnk_mau': return xnkMauData;
       case 'xnk_donhang': return xnkDonHangData;
       case 'xnk_donhang_ct': return xnkDonHangCtData;
+      case 'xnk_lohang': return xnkLoHangData;
       default: return [];
     }
   };
@@ -182,9 +188,10 @@ export function DataProvider({ children }) {
       return { ytuong, mau, donhang };
     }
 
-    // Chi tiết SP của PO luôn tải kèm đơn hàng PO để giữ liên kết Ý tưởng / Mẫu thử
+    // Chi tiết SP & lô vận chuyển của PO luôn tải kèm đơn hàng PO
     if (moduleName === 'xnk_donhang') {
       fetchModule('xnk_donhang_ct', force);
+      fetchModule('xnk_lohang', force);
     }
 
     const config = SIMPLE_SHEET_MODULES[moduleName];
@@ -805,6 +812,7 @@ export function DataProvider({ children }) {
         xnkMauData,
         xnkDonHangData,
         xnkDonHangCtData,
+        xnkLoHangData,
         aggregatesData,
         nppProductIdsData,
         fetchAggregatesData,

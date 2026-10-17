@@ -35,6 +35,8 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { buildPoLinesMap, deletePoLines } from './xnkPoLines';
+import { buildLotsMap, deletePoLots } from './xnkLots';
+import { getPoStatusBadgeClass } from './xnkStages';
 
 const DEFAULT_XNK_DONHANG_COLUMNS = [
   { key: 'select', label: 'Chọn', width: 45, align: 'center', format: 'default' },
@@ -59,6 +61,7 @@ export function XnkDonHangModule({ onNavigate }) {
     xnkMauData, 
     xnkDonHangData, 
     xnkDonHangCtData,
+    xnkLoHangData,
     fetchModule, 
     deleteRow,
     loadingModules 
@@ -222,12 +225,14 @@ export function XnkDonHangModule({ onNavigate }) {
   };
 
   const poLinesMap = useMemo(() => buildPoLinesMap(xnkDonHangCtData), [xnkDonHangCtData]);
+  const lotsMap = useMemo(() => buildLotsMap(xnkLoHangData), [xnkLoHangData]);
 
   const handleDelete = async (sheetRow, maPo) => {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa đơn hàng PO [${maPo}]?`)) return;
     try {
       await deleteRow('xnk_donhang', sheetRow);
       await deletePoLines(maPo, poLinesMap, deleteRow);
+      await deletePoLots(maPo, lotsMap, deleteRow);
     } catch (err) {
       console.error('Lỗi xóa:', err);
       alert('Không thể xóa dòng dữ liệu. Vui lòng thử lại!');
@@ -301,7 +306,9 @@ export function XnkDonHangModule({ onNavigate }) {
             className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
           >
             <option value="ALL">🏷️ Trạng thái (Tất cả)</option>
+            <option value="Đã duyệt thiết kế">Đã duyệt thiết kế</option>
             <option value="Đang sản xuất">Đang sản xuất</option>
+            <option value="Chờ ship">Chờ ship</option>
             <option value="Đang vận chuyển">Đang vận chuyển</option>
             <option value="Đang thông quan">Đang thông quan</option>
             <option value="Đã về kho">Đã về kho</option>
@@ -585,17 +592,7 @@ export function XnkDonHangModule({ onNavigate }) {
                             case 'tinh_trang_cuoi':
                               return (
                                 <td key={col.key} style={widthStyle} className={`py-2.5 px-3 whitespace-nowrap ${alignClass}`}>
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                                    item.tinh_trang_cuoi === 'Đã về kho' || item.tinh_trang_cuoi === 'Đã hoàn thành'
-                                      ? 'bg-emerald-100 text-emerald-800'
-                                      : item.tinh_trang_cuoi === 'Đang thông quan'
-                                      ? 'bg-indigo-100 text-indigo-800'
-                                      : item.tinh_trang_cuoi === 'Đang vận chuyển'
-                                      ? 'bg-cyan-100 text-cyan-800'
-                                      : item.tinh_trang_cuoi === 'Đang sản xuất'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : 'bg-slate-100 text-slate-700'
-                                  }`}>
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${getPoStatusBadgeClass(item.tinh_trang_cuoi)}`}>
                                     {item.tinh_trang_cuoi}
                                   </span>
                                 </td>

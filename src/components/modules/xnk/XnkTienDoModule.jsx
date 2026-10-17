@@ -1,6 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../../context/DataContext';
 import { XnkTrackingModal, getPoKanbanStage } from './XnkTrackingModal';
+import { PO_KANBAN_COLUMNS } from './xnkStages';
+import { STAGE_ICONS } from './PoStageViews';
+import { buildLotsMap, buildKanbanCards } from './xnkLots';
+import { buildPoLinesMap } from './xnkPoLines';
 import { exportToExcel } from '../../../services/excelService';
 import { 
   formatDateVN, 
@@ -29,6 +33,8 @@ import {
 export function XnkTienDoModule({ onNavigate }) {
   const { 
     xnkDonHangData, 
+    xnkDonHangCtData,
+    xnkLoHangData,
     fetchModule, 
     loadingModules 
   } = useData();
@@ -81,39 +87,18 @@ export function XnkTienDoModule({ onNavigate }) {
     );
   }, [donHangList, searchTerm]);
 
-  // 5 Kanban Stages (Phân loại theo trạng thái tiến độ thực tế thay vì ngày dự kiến)
-  const kanbanStages = [
-    {
-      id: 'st1',
-      title: '1. Đặt hàng & Cọc',
-      icon: Clock,
-      items: filteredList.filter(d => getPoKanbanStage(d) === 1)
-    },
-    {
-      id: 'st2',
-      title: '2. Đang sản xuất',
-      icon: Factory,
-      items: filteredList.filter(d => getPoKanbanStage(d) === 2)
-    },
-    {
-      id: 'st3',
-      title: '3. Vận chuyển QT',
-      icon: Truck,
-      items: filteredList.filter(d => getPoKanbanStage(d) === 3)
-    },
-    {
-      id: 'st4',
-      title: '4. Đang thông quan',
-      icon: CheckCircle2,
-      items: filteredList.filter(d => getPoKanbanStage(d) === 4)
-    },
-    {
-      id: 'st5',
-      title: '5. Đã về kho',
-      icon: Warehouse,
-      items: filteredList.filter(d => getPoKanbanStage(d) === 5)
-    }
-  ];
+  // Các cột Kanban (Phân loại theo trạng thái tiến độ thực tế thay vì ngày dự kiến)
+  // PO chia lô: mỗi lô vận chuyển là 1 thẻ riêng
+  const poLinesMap = useMemo(() => buildPoLinesMap(xnkDonHangCtData), [xnkDonHangCtData]);
+  const lotsMap = useMemo(() => buildLotsMap(xnkLoHangData), [xnkLoHangData]);
+  const kanbanCards = useMemo(() => buildKanbanCards(filteredList, lotsMap, poLinesMap), [filteredList, lotsMap, poLinesMap]);
+
+  const kanbanStages = PO_KANBAN_COLUMNS.map(c => ({
+    id: `st${c.col}`,
+    title: c.title,
+    icon: STAGE_ICONS[c.stageKey],
+    items: kanbanCards.filter(d => d._col === c.col)
+  }));
 
   const handleExportExcel = () => {
     const headers = ['Mã PO', 'SKU', 'Tên sản phẩm', 'Nhà cung cấp', 'Số lượng', 'Ngày đặt/cọc', 'Ngày SX xong', 'Tracking', 'Ngày gửi hàng', 'Ngày thông quan', 'Ngày kho nhận', 'Tình trạng cuối'];
@@ -137,7 +122,7 @@ export function XnkTienDoModule({ onNavigate }) {
             }`}
           >
             <BarChart3 className="w-4 h-4" />
-            <span>Bảng Kanban 5 Chặng</span>
+            <span>Bảng Kanban {PO_KANBAN_COLUMNS.length} Chặng</span>
           </button>
         </div>
 
@@ -190,13 +175,13 @@ export function XnkTienDoModule({ onNavigate }) {
         </div>
       </div>
 
-      {/* 3. 5 KANBAN COLUMNS VIEW */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-1">
+      {/* 3. KANBAN COLUMNS VIEW */}
+      <div className="flex gap-3 overflow-x-auto pb-2 pt-1">
         {kanbanStages.map((st) => {
           const Icon = st.icon;
 
           return (
-            <div key={st.id} className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-3 flex flex-col min-h-[460px]">
+            <div key={st.id} className="min-w-[230px] flex-1 bg-slate-50/70 border border-slate-200/80 rounded-2xl p-3 flex flex-col min-h-[460px]">
               <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
                 <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
                   <Icon className="w-4 h-4 text-blue-600" />
@@ -215,16 +200,16 @@ export function XnkTienDoModule({ onNavigate }) {
                 ) : (
                   st.items.map((order) => (
                     <div
-                      key={order.ma_po}
+                      key={order._cardKey}
                       onClick={() => {
-                        setTrackingOrder(order);
+                        setTrackingOrder(order._po);
                         setIsTrackingModalOpen(true);
                       }}
                       className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs hover:shadow-md hover:border-blue-400 transition cursor-pointer space-y-1.5 group"
                     >
                       <div className="flex items-center justify-between">
                         <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[11px]">
-                          {order.ma_po}
+                          {order.ma_po}{order._lotLabel ? ` / ${order._lotLabel}` : ''}
                         </span>
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                           order.ke_hoach_ban === 'Bán ngay'
@@ -234,7 +219,12 @@ export function XnkTienDoModule({ onNavigate }) {
                           {order.ke_hoach_ban}
                         </span>
                       </div>
-                      <div className="text-xs font-bold text-slate-900 line-clamp-1">
+                      {order._note && (
+                          <div className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded inline-block">
+                            {order._note}
+                          </div>
+                        )}
+                        <div className="text-xs font-bold text-slate-900 line-clamp-1">
                         {order.ten_sp}
                       </div>
                       <div className="text-[11px] text-slate-500">

@@ -20,6 +20,7 @@ export const CONFIG = {
   xnkMauSheetName: "XNK_MAU",
   xnkDonHangSheetName: "XNK_DON_HANG",
   xnkDonHangCtSheetName: "XNK_DON_HANG_CT",
+  xnkLoHangSheetName: "XNK_LO_HANG",
   permissionsFile: "permissions.json"
 };
 

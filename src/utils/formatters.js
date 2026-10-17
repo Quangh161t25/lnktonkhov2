@@ -25,7 +25,15 @@ export function parseSimpleSheetDate(dateStr) {
   if (dateStr instanceof Date) return dateStr;
   
   const s = dateStr.toString().trim();
-  
+
+  // Số serial ngày của Google Sheets (ô ngày bị định dạng kiểu số, vd 46312 = 17/10/2026)
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = Math.floor(parseFloat(s));
+    if (serial >= 20000 && serial <= 80000) {
+      return new Date(1899, 11, 30 + serial);
+    }
+  }
+
   // Format YYYY-MM-DD
   if (/^\d{4}-\d{1,2}-\d{1,2}/.test(s)) {
     const parts = s.split('T')[0].split('-');

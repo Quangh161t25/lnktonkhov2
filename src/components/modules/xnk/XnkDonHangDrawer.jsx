@@ -6,7 +6,6 @@ import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { 
   formatDateInput, 
-  formatDateVN, 
   cleanNumber, 
   formatCurrency, 
   formatNumber 
@@ -31,56 +30,20 @@ import {
   Trash2
 } from 'lucide-react';
 import { buildPoLinesMap, getPoLines, summarizePoLines } from './xnkPoLines';
-import { 
-  extractTiendoMeta, 
-  stripTiendoMeta, 
-  buildGhiChuWithMeta, 
-  resolvePoStageCompletion, 
-  computeStatusFromStages 
-} from './XnkTrackingModal';
-
-// Cộng trừ ngày theo múi giờ địa phương an toàn
-function addDays(dateStr, days) {
-  if (!dateStr) return '';
-  const numDays = Number(days);
-  if (isNaN(numDays)) return dateStr;
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    const y = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10) - 1;
-    const d = parseInt(parts[2], 10);
-    const dateObj = new Date(y, m, d);
-    dateObj.setDate(dateObj.getDate() + numDays);
-    const resY = dateObj.getFullYear();
-    const resM = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const resD = String(dateObj.getDate()).padStart(2, '0');
-    return `${resY}-${resM}-${resD}`;
-  }
-  const dateObj = new Date(dateStr);
-  if (isNaN(dateObj.getTime())) return dateStr;
-  dateObj.setDate(dateObj.getDate() + numDays);
-  return dateObj.toISOString().slice(0, 10);
-}
-
-// Tính khoảng cách số ngày giữa 2 mốc thời gian
-function calcDurationDays(startDate, endDate) {
-  if (!startDate || !endDate) return 0;
-  const startParts = startDate.split('-');
-  const endParts = endDate.split('-');
-  if (startParts.length === 3 && endParts.length === 3) {
-    const s = new Date(parseInt(startParts[0], 10), parseInt(startParts[1], 10) - 1, parseInt(startParts[2], 10));
-    const e = new Date(parseInt(endParts[0], 10), parseInt(endParts[1], 10) - 1, parseInt(endParts[2], 10));
-    const diffTime = e.getTime() - s.getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 ? diffDays : 0;
-  }
-  const s = new Date(startDate);
-  const e = new Date(endDate);
-  if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
-  const diffTime = e.getTime() - s.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays >= 0 ? diffDays : 0;
-}
+import { PO_STAGES, STAGE_INDEX, usePoSchedule, stripTiendoMeta, buildGhiChuWithMeta, computeStatusFromDone, calcDurationDays } from './xnkStages';
+import { PoStageTable, PoStageGantt } from './PoStageViews';
+import { PoLotsPanel } from './PoLotsPanel';
+import {
+  usePoLots,
+  buildLotsMap,
+  applyLotsToDone,
+  receivedByLine,
+  lotAllocation,
+  lineKey,
+  savePoLots,
+  latestLotDate,
+  LOT_STAGE_KEYS
+} from './xnkLots';
 
 // Tạo 1 dòng SP trống cho PO
 let poLineSeq = 0;
@@ -105,7 +68,10 @@ export function XnkDonHangDrawer({
   onClose, 
   editItem = null, 
   initialSample = null,
-  onSaved 
+  onSaved,
+  readOnly = false,   // Chỉ xem: hiện y hệt form sửa nhưng khoá mọi ô nhập
+  embedded = false,   // Nhúng vào trang khác (không bọc Drawer)
+  onRequestEdit = null
 }) {
   const { currentUser, hasActionPermission, usersData } = useAuth();
   const { 
@@ -117,6 +83,7 @@ export function XnkDonHangDrawer({
     xnkMauData,
     xnkDonHangData,
     xnkDonHangCtData,
+    xnkLoHangData,
     productData,
     deleteRow,
     fetchModule
@@ -178,40 +145,10 @@ export function XnkDonHangDrawer({
   // Danh sách sản phẩm trong PO (1 PO - nhiều SP, mỗi SP liên kết Ý tưởng / Mẫu thử riêng)
   const [lines, setLines] = useState(() => [newPoLine()]);
 
-  // 2. Tiến độ & Lịch trình 6 chặng liên hoàn (Từ ngày chặng này = Đến ngày chặng trước)
-  // Chặng 1: Đặt hàng & Cọc
-  const [ngayDatHang, setNgayDatHang] = useState(formatDateInput(new Date()));
-  const [daysStage1, setDaysStage1] = useState(1);
-  const [ngayCocXong, setNgayCocXong] = useState(formatDateInput(new Date()));
-  const [stage1Done, setStage1Done] = useState(true);
-
-  // Chặng 2: Sản xuất xưởng (Từ ngày = ngayCocXong)
-  const [daysStage2, setDaysStage2] = useState(15);
-  const [ngaySxXong, setNgaySxXong] = useState('');
-  const [stage2Done, setStage2Done] = useState(false);
-
-  // Chặng 3: Vận chuyển quốc tế (Từ ngày = ngaySxXong)
-  const [daysStage3, setDaysStage3] = useState(7);
-  const [ngayDenCang, setNgayDenCang] = useState('');
+  // 2. Tiến độ & Lịch trình các chặng liên hoàn (Từ ngày chặng này = Đến ngày chặng trước)
+  const sched = usePoSchedule();
   const [trackingVanChuyen, setTrackingVanChuyen] = useState('');
-  const [stage3Done, setStage3Done] = useState(false);
-
-  // Chặng 4: Hải quan & Cảng (Từ ngày = ngayDenCang)
-  const [daysStage4, setDaysStage4] = useState(3);
-  const [ngayThongQuan, setNgayThongQuan] = useState('');
   const [thongTinHaiQuan, setThongTinHaiQuan] = useState('Cảng Cát Lái');
-  const [stage4Done, setStage4Done] = useState(false);
-
-  // Chặng 5: Kho Việt Nam nhận hàng (Từ ngày = ngayThongQuan)
-  const [daysStage5, setDaysStage5] = useState(2);
-  const [ngayKhoNhan, setNgayKhoNhan] = useState('');
-  const [stage5Done, setStage5Done] = useState(false);
-
-  // Chặng 6: Kế hoạch phân phối & Mở bán (Từ ngày = ngayKhoNhan)
-  const [keHoachBanType, setKeHoachBanType] = useState('Bán ngay');
-  const [daysStage6, setDaysStage6] = useState(0);
-  const [ngayKeHoachBan, setNgayKeHoachBan] = useState('');
-  const [stage6Done, setStage6Done] = useState(false);
 
   // Ghi chú & Trạng thái sau cùng
   const [manualStatusOverride, setManualStatusOverride] = useState('');
@@ -220,8 +157,17 @@ export function XnkDonHangDrawer({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Lô vận chuyển (chặng Vận chuyển QT -> Thông quan -> Kho nhận tính riêng từng lô)
+  const lotsApi = usePoLots();
+  const hasLots = lotsApi.lots.length > 0;
+  const lotReceived = useMemo(() => receivedByLine(lotsApi.lots), [lotsApi.lots]);
+  // Có lô thì SL thực nhận của từng SP = tổng thực nhận các lô
+  const effectiveLines = useMemo(() => (hasLots
+    ? lines.map(l => ({ ...l, slg_thuc_nhan: lotReceived && lotReceived[lineKey(l)] !== undefined ? lotReceived[lineKey(l)] : '' }))
+    : lines), [lines, hasLots, lotReceived]);
+
   // Tổng hợp từ các dòng SP
-  const poSummary = useMemo(() => summarizePoLines(lines), [lines]);
+  const poSummary = useMemo(() => summarizePoLines(effectiveLines), [effectiveLines]);
   const tongTien = poSummary.tong_tien;
   const tongSoLuong = poSummary.so_luong;
   const slgThucNhan = poSummary.slg_thuc_nhan;
@@ -291,6 +237,18 @@ export function XnkDonHangDrawer({
     setLines(saved.map(toFormLine));
   }, [isOpen, editItem, poLinesMap]);
 
+  // Lô vận chuyển đã lưu (nạp lại khi dữ liệu về sau lúc mở form)
+  const lotsMap = useMemo(() => buildLotsMap(xnkLoHangData), [xnkLoHangData]);
+  const lotsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen || !editItem || lotsLoadedRef.current) return;
+    const saved = lotsMap[String(editItem.ma_po || '').trim().toUpperCase()];
+    if (!saved || saved.length === 0) return;
+    lotsLoadedRef.current = true;
+    lotsApi.load(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editItem, lotsMap]);
+
   // Tìm ý tưởng của 1 dòng SP (qua mẫu thử, rồi SKU / Tên SP)
   const resolveIdeaId = (line) => {
     if (line.id_y_tuong) return line.id_y_tuong;
@@ -313,17 +271,17 @@ export function XnkDonHangDrawer({
   });
 
   // Tự động tính toán Trạng thái sau cùng theo đúng các nút Đã xong / Chưa xong
-  const autoComputedStatus = useMemo(() => {
-    return computeStatusFromStages({
-      s1: stage1Done,
-      s2: stage2Done,
-      s3: stage3Done,
-      s4: stage4Done,
-      s5: stage5Done,
-      s6: stage6Done,
-      isCancelled: manualStatusOverride === 'Đã hủy'
-    });
-  }, [stage6Done, stage5Done, stage4Done, stage3Done, stage2Done, stage1Done, manualStatusOverride]);
+  // Có lô: chặng Vận chuyển / Thông quan / Kho nhận suy ra từ các lô
+  const mergedDone = applyLotsToDone(sched.done, lotsApi.lots, lines);
+  const autoComputedStatus = computeStatusFromDone(mergedDone, manualStatusOverride === 'Đã hủy');
+  // Đã tách lô: chặng Vận chuyển QT trở đi theo dõi trong từng lô, ẩn khỏi bảng chung của PO
+  const lotHiddenKeys = hasLots ? LOT_STAGE_KEYS : [];
+  const lotHiddenNote = hasLots
+    ? `Chặng ${STAGE_INDEX.vc + 1}–${PO_STAGES.length} (Vận chuyển QT → Thông quan → Kho nhận → Mở bán) theo dõi riêng trong ${lotsApi.lots.length} lô vận chuyển bên dưới.`
+    : '';
+  const lotDefaultStart = sched.ends[STAGE_INDEX.ship];
+  // Chỉ tách lô khi đã xong toàn bộ các chặng trước Vận chuyển QT (Cọc -> Duyệt TK -> SX -> Chờ ship)
+  const canSplitLots = sched.done.slice(0, STAGE_INDEX.vc).every(Boolean);
 
   // Khởi tạo form khi mở Drawer
   useEffect(() => {
@@ -334,70 +292,12 @@ export function XnkDonHangDrawer({
       setLines(getPoLines(editItem, poLinesMap).map(toFormLine));
       setTienCoc(editItem.tien_coc !== undefined && editItem.tien_coc !== '' ? editItem.tien_coc : 0);
       
-      // Ngày & Tiến độ
-      const meta = extractTiendoMeta(editItem.ghi_chu);
-      const resolvedStages = resolvePoStageCompletion(editItem);
-      const dtStart1 = editItem.ngay_dat_hang ? formatDateInput(editItem.ngay_dat_hang) : formatDateInput(new Date());
-      setNgayDatHang(dtStart1);
-      
-      // Chặng 1
-      const d1 = meta.d1 ? (parseInt(meta.d1, 10) || 1) : 1;
-      setDaysStage1(d1);
-      const end1 = meta.coc ? formatDateInput(meta.coc) : addDays(dtStart1, d1);
-      setNgayCocXong(end1);
-      setStage1Done(resolvedStages.s1);
-
-      // Chặng 2
-      const dtSx = editItem.ngay_sx_xong ? formatDateInput(editItem.ngay_sx_xong) : '';
-      const d2 = dtSx ? (calcDurationDays(end1, dtSx) || 1) : 15;
-      setDaysStage2(d2);
-      const end2 = dtSx || addDays(end1, d2);
-      setNgaySxXong(end2);
-      setStage2Done(resolvedStages.s2);
-
-      // Chặng 3
+      // Ngày & Tiến độ các chặng
+      sched.load(editItem);
       setTrackingVanChuyen(editItem.tracking_van_chuyen || '');
-      const d3 = meta.d3 ? (parseInt(meta.d3, 10) || 7) : 7;
-      setDaysStage3(d3);
-      const dtDenCang = meta.cang
-        ? formatDateInput(meta.cang)
-        : (editItem.ngay_gui_hang && editItem.ngay_gui_hang !== dtSx ? formatDateInput(editItem.ngay_gui_hang) : addDays(end2, d3));
-      setNgayDenCang(dtDenCang);
-      setStage3Done(resolvedStages.s3);
-
-      // Chặng 4
-      const dtTq = editItem.ngay_thong_quan ? formatDateInput(editItem.ngay_thong_quan) : '';
-      const d4 = dtTq ? (calcDurationDays(dtDenCang, dtTq) || 1) : 3;
-      setDaysStage4(d4);
-      const end4 = dtTq || addDays(dtDenCang, d4);
-      setNgayThongQuan(end4);
-      setStage4Done(resolvedStages.s4);
-
-      // Chặng 5
-      const dtKho = editItem.ngay_kho_nhan ? formatDateInput(editItem.ngay_kho_nhan) : '';
-      const d5 = dtKho ? (calcDurationDays(end4, dtKho) || 1) : 2;
-      setDaysStage5(d5);
-      const end5 = dtKho || addDays(end4, d5);
-      setNgayKhoNhan(end5);
-      setStage5Done(resolvedStages.s5);
-
-      // Chặng 6: Kế hoạch bán
-      const rawKeHoach = editItem.ke_hoach_ban || 'Bán ngay';
-      const isBanSau = rawKeHoach.includes('Bán sau');
-      setKeHoachBanType(isBanSau ? 'Bán sau (Trữ kho)' : 'Bán ngay');
-      const matchDate = rawKeHoach.match(/\[(.*?)\]/);
-      let dtBan = '';
-      if (matchDate && matchDate[1]) {
-        dtBan = formatDateInput(matchDate[1]);
-      } else if (isBanSau) {
-        dtBan = addDays(end5, 7);
-      } else {
-        dtBan = end5;
-      }
-      const d6 = calcDurationDays(end5, dtBan);
-      setDaysStage6(d6);
-      setNgayKeHoachBan(dtBan);
-      setStage6Done(resolvedStages.s6);
+      const savedLots = lotsMap[String(editItem.ma_po || '').trim().toUpperCase()] || [];
+      lotsLoadedRef.current = savedLots.length > 0;
+      lotsApi.load(savedLots);
 
       setManualStatusOverride(editItem.tinh_trang_cuoi === 'Đã hủy' ? 'Đã hủy' : '');
       setGhiChu(stripTiendoMeta(editItem.ghi_chu));
@@ -423,39 +323,11 @@ export function XnkDonHangDrawer({
 
       setTienCoc(0);
       
-      const nowInput = formatDateInput(new Date());
-      setNgayDatHang(nowInput);
-      setDaysStage1(1);
-      const end1 = addDays(nowInput, 1);
-      setNgayCocXong(end1);
-      setStage1Done(true);
-
-      setDaysStage2(15);
-      const end2 = addDays(end1, 15);
-      setNgaySxXong(end2);
-      setStage2Done(false);
-
-      setDaysStage3(7);
-      const end3 = addDays(end2, 7);
-      setNgayDenCang(end3);
+      sched.reset(formatDateInput(new Date()));
+      lotsLoadedRef.current = false;
+      lotsApi.load([]);
       setTrackingVanChuyen('');
-      setStage3Done(false);
-
-      setDaysStage4(3);
-      const end4 = addDays(end3, 3);
-      setNgayThongQuan(end4);
       setThongTinHaiQuan('Cảng Cát Lái');
-      setStage4Done(false);
-
-      setDaysStage5(2);
-      const end5 = addDays(end4, 2);
-      setNgayKhoNhan(end5);
-      setStage5Done(false);
-
-      setKeHoachBanType('Bán ngay');
-      setDaysStage6(0);
-      setNgayKeHoachBan(end5);
-      setStage6Done(false);
 
       setManualStatusOverride('');
       setGhiChu('');
@@ -524,223 +396,31 @@ export function XnkDonHangDrawer({
     updateLine(uid, patch);
   };
 
-  // -------------------------------------------------------------
-  // BỘ HÀM DỜI LỊCH DÂY CHUYỀN (Từ ngày chặng này = Đến ngày chặng trước)
-  // -------------------------------------------------------------
-  // Khi đổi ngày bắt đầu chặng 1
-  const handleStart1Change = (val) => {
-    setNgayDatHang(val);
-    const end1 = addDays(val, daysStage1);
-    const end2 = addDays(end1, daysStage2);
-    const end3 = addDays(end2, daysStage3);
-    const end4 = addDays(end3, daysStage4);
-    const end5 = addDays(end4, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgayCocXong(end1);
-    setNgaySxXong(end2);
-    setNgayDenCang(end3);
-    setNgayThongQuan(end4);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  // Chặng 1: Sửa số ngày hoặc sửa đến ngày
-  const handleDays1Change = (val) => {
-    const d = Math.max(0, parseInt(val, 10) || 0);
-    setDaysStage1(d);
-    const end1 = addDays(ngayDatHang, d);
-    const end2 = addDays(end1, daysStage2);
-    const end3 = addDays(end2, daysStage3);
-    const end4 = addDays(end3, daysStage4);
-    const end5 = addDays(end4, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgayCocXong(end1);
-    setNgaySxXong(end2);
-    setNgayDenCang(end3);
-    setNgayThongQuan(end4);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  const handleEnd1Change = (val) => {
-    setNgayCocXong(val);
-    const d = calcDurationDays(ngayDatHang, val);
-    setDaysStage1(d);
-    const end2 = addDays(val, daysStage2);
-    const end3 = addDays(end2, daysStage3);
-    const end4 = addDays(end3, daysStage4);
-    const end5 = addDays(end4, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgaySxXong(end2);
-    setNgayDenCang(end3);
-    setNgayThongQuan(end4);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  // Chặng 2: Sửa số ngày hoặc sửa đến ngày
-  const handleDays2Change = (val) => {
-    const d = Math.max(0, parseInt(val, 10) || 0);
-    setDaysStage2(d);
-    const end2 = addDays(ngayCocXong, d);
-    const end3 = addDays(end2, daysStage3);
-    const end4 = addDays(end3, daysStage4);
-    const end5 = addDays(end4, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgaySxXong(end2);
-    setNgayDenCang(end3);
-    setNgayThongQuan(end4);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  const handleEnd2Change = (val) => {
-    setNgaySxXong(val);
-    const d = calcDurationDays(ngayCocXong, val);
-    setDaysStage2(d);
-    const end3 = addDays(val, daysStage3);
-    const end4 = addDays(end3, daysStage4);
-    const end5 = addDays(end4, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgayDenCang(end3);
-    setNgayThongQuan(end4);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  // Chặng 3: Sửa số ngày hoặc sửa đến ngày
-  const handleDays3Change = (val) => {
-    const d = Math.max(0, parseInt(val, 10) || 0);
-    setDaysStage3(d);
-    const end3 = addDays(ngaySxXong, d);
-    const end4 = addDays(end3, daysStage4);
-    const end5 = addDays(end4, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgayDenCang(end3);
-    setNgayThongQuan(end4);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  const handleEnd3Change = (val) => {
-    setNgayDenCang(val);
-    const d = calcDurationDays(ngaySxXong, val);
-    setDaysStage3(d);
-    const end4 = addDays(val, daysStage4);
-    const end5 = addDays(end4, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgayThongQuan(end4);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  // Chặng 4: Sửa số ngày hoặc sửa đến ngày
-  const handleDays4Change = (val) => {
-    const d = Math.max(0, parseInt(val, 10) || 0);
-    setDaysStage4(d);
-    const end4 = addDays(ngayDenCang, d);
-    const end5 = addDays(end4, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgayThongQuan(end4);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  const handleEnd4Change = (val) => {
-    setNgayThongQuan(val);
-    const d = calcDurationDays(ngayDenCang, val);
-    setDaysStage4(d);
-    const end5 = addDays(val, daysStage5);
-    const end6 = addDays(end5, daysStage6);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  // Chặng 5: Sửa số ngày hoặc sửa đến ngày
-  const handleDays5Change = (val) => {
-    const d = Math.max(0, parseInt(val, 10) || 0);
-    setDaysStage5(d);
-    const end5 = addDays(ngayThongQuan, d);
-    const end6 = addDays(end5, daysStage6);
-    setNgayKhoNhan(end5);
-    setNgayKeHoachBan(end6);
-  };
-
-  const handleEnd5Change = (val) => {
-    setNgayKhoNhan(val);
-    const d = calcDurationDays(ngayThongQuan, val);
-    setDaysStage5(d);
-    const end6 = addDays(val, daysStage6);
-    setNgayKeHoachBan(end6);
-  };
-
-  // Chặng 6: Kế hoạch phân phối
-  const handleDays6Change = (val) => {
-    const d = Math.max(0, parseInt(val, 10) || 0);
-    setDaysStage6(d);
-    const end6 = addDays(ngayKhoNhan, d);
-    setNgayKeHoachBan(end6);
-    setKeHoachBanType(d === 0 ? 'Bán ngay' : 'Bán sau (Trữ kho)');
-  };
-
-  const handleEnd6Change = (val) => {
-    setNgayKeHoachBan(val);
-    const d = calcDurationDays(ngayKhoNhan, val);
-    setDaysStage6(d);
-    setKeHoachBanType(d === 0 ? 'Bán ngay' : 'Bán sau (Trữ kho)');
-  };
-
-  const handlePlanTypeChange = (type) => {
-    setKeHoachBanType(type);
-    if (type === 'Bán ngay') {
-      setDaysStage6(0);
-      setNgayKeHoachBan(ngayKhoNhan);
-    } else {
-      const d = daysStage6 > 0 ? daysStage6 : 7;
-      setDaysStage6(d);
-      setNgayKeHoachBan(addDays(ngayKhoNhan, d));
+  // Bật/tắt Đã xong 1 chặng; về kho thì tự điền SL thực nhận = SL đặt
+  const handleToggleStage = (i) => {
+    // Đã tách lô thì không cho bỏ tích các chặng trước khi ship (chặng 1-4)
+    if (hasLots && i < STAGE_INDEX.vc && sched.done[i]) {
+      alert('PO đã tách lô vận chuyển nên không thể bỏ "Đã xong" các chặng trước khi ship. Xóa các lô trước nếu muốn sửa lại.');
+      return;
+    }
+    const turnedOn = sched.toggle(i);
+    if (turnedOn && i >= STAGE_INDEX.kho) {
+      setLines(prev => prev.map(l => (
+        l.slg_thuc_nhan === '' || l.slg_thuc_nhan === undefined ? { ...l, slg_thuc_nhan: l.so_luong || '' } : l
+      )));
     }
   };
 
-  const handleToggleStage = (stageNum) => {
-    const currentMap = {
-      1: stage1Done,
-      2: stage2Done,
-      3: stage3Done,
-      4: stage4Done,
-      5: stage5Done,
-      6: stage6Done
-    };
-    const next = !currentMap[stageNum];
-    if (next) {
-      if (stageNum >= 1) setStage1Done(true);
-      if (stageNum >= 2) setStage2Done(true);
-      if (stageNum >= 3) setStage3Done(true);
-      if (stageNum >= 4) setStage4Done(true);
-      if (stageNum >= 5) {
-        setStage5Done(true);
-        setLines(prev => prev.map(l => (
-          l.slg_thuc_nhan === '' || l.slg_thuc_nhan === undefined ? { ...l, slg_thuc_nhan: l.so_luong || '' } : l
-        )));
-      }
-      if (stageNum >= 6) setStage6Done(true);
-    } else {
-      if (stageNum <= 1) setStage1Done(false);
-      if (stageNum <= 2) setStage2Done(false);
-      if (stageNum <= 3) setStage3Done(false);
-      if (stageNum <= 4) setStage4Done(false);
-      if (stageNum <= 5) setStage5Done(false);
-      if (stageNum <= 6) setStage6Done(false);
-    }
-  };
-
-  // Tổng thời gian Lead-time toàn bộ 6 chặng
-  const totalLeadDays = (daysStage1 || 0) + (daysStage2 || 0) + (daysStage3 || 0) + (daysStage4 || 0) + (daysStage5 || 0) + (daysStage6 || 0);
+  // Tổng thời gian Lead-time toàn bộ các chặng
+  // Đã tách lô: tính tới ngày muộn nhất của các lô
+  const totalLeadDays = hasLots && latestLotDate(lotsApi.lots)
+    ? calcDurationDays(sched.start, latestLotDate(lotsApi.lots))
+    : sched.leadDays;
 
   // Submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const filledLines = lines.filter(l => String(l.sku || '').trim() || String(l.ten_sp || '').trim() || l.id_mau || l.id_y_tuong);
+    const filledLines = effectiveLines.filter(l => String(l.sku || '').trim() || String(l.ten_sp || '').trim() || l.id_mau || l.id_y_tuong);
     if (filledLines.length === 0) {
       setErrorMsg('Vui lòng thêm ít nhất 1 sản phẩm vào đơn PO!');
       return;
@@ -750,6 +430,13 @@ export function XnkDonHangDrawer({
       setErrorMsg(`Sản phẩm dòng ${badIdx + 1}: cần có Tên sản phẩm và Số lượng lớn hơn 0!`);
       return;
     }
+    if (hasLots) {
+      const over = lotAllocation(filledLines, lotsApi.lots).filter(a => a.con < 0);
+      if (over.length > 0) {
+        setErrorMsg(`Số lượng xếp lô vượt số lượng đặt: ${over.map(a => a.ten_sp || a.sku).join(', ')}`);
+        return;
+      }
+    }
     const summary = summarizePoLines(filledLines);
     const tenSp = summary.ten_sp;
 
@@ -757,14 +444,11 @@ export function XnkDonHangDrawer({
     setErrorMsg('');
 
     try {
-      // Chuỗi Kế hoạch bán hàng kèm Ngày mở bán
-      let formattedKeHoach = keHoachBanType;
-      if (ngayKeHoachBan) {
-        formattedKeHoach = `${keHoachBanType} [${formatDateVN(ngayKeHoachBan)}]`;
-      } else if (ngayKhoNhan && keHoachBanType === 'Bán ngay') {
-        formattedKeHoach = `${keHoachBanType} [${formatDateVN(ngayKhoNhan)}]`;
-      }
-
+      const schedRow = sched.toRow(mergedDone);
+      // Có lô: cột vận đơn của PO gom mã vận đơn các lô
+      const poTracking = hasLots
+        ? lotsApi.lots.map(l => String(l.tracking || '').trim()).filter(Boolean).join(', ')
+        : trackingVanChuyen.trim();
       const finalStatus = manualStatusOverride || autoComputedStatus;
 
       // 1. Resolve targetSheetRow with fallback lookup by maPo
@@ -777,20 +461,7 @@ export function XnkDonHangDrawer({
         }
       }
 
-      const meta = {
-        s1: stage1Done ? 1 : 0,
-        s2: stage2Done ? 1 : 0,
-        s3: stage3Done ? 1 : 0,
-        s4: stage4Done ? 1 : 0,
-        s5: stage5Done ? 1 : 0,
-        s6: stage6Done ? 1 : 0,
-        d1: daysStage1,
-        coc: ngayCocXong,
-        d3: daysStage3,
-        cang: ngayDenCang
-      };
-
-      const finalGhiChu = buildGhiChuWithMeta(ghiChu.trim(), meta);
+      const finalGhiChu = buildGhiChuWithMeta(ghiChu.trim(), schedRow.meta);
 
       // 19 Cột chuẩn của Google Sheet XNK_DON_HANG:
       // ['ma_po', 'id_mau', 'sku', 'ten_sp', 'ten_ncc', 'so_luong', 'don_gia', 'tong_tien', 'tien_coc', 'ngay_dat_hang', 'ngay_sx_xong', 'tracking_van_chuyen', 'ngay_gui_hang', 'ngay_thong_quan', 'ngay_kho_nhan', 'slg_thuc_nhan', 'ke_hoach_ban', 'tinh_trang_cuoi', 'ghi_chu']
@@ -805,14 +476,14 @@ export function XnkDonHangDrawer({
         summary.don_gia,
         summary.tong_tien,
         cleanNumber(tienCoc),
-        ngayDatHang,
-        ngaySxXong,
-        trackingVanChuyen.trim(),
-        ngayDenCang, // Cột 12: Ngày đến cảng / hoàn thành chặng 3
-        ngayThongQuan,
-        ngayKhoNhan,
+        schedRow.ngay_dat_hang,
+        schedRow.ngay_sx_xong,
+        poTracking,
+        schedRow.ngay_gui_hang, // Cột 12: Ngày đến cảng / hoàn thành chặng Vận chuyển QT
+        schedRow.ngay_thong_quan,
+        schedRow.ngay_kho_nhan,
         summary.slg_thuc_nhan,
-        formattedKeHoach,
+        schedRow.ke_hoach_ban,
         finalStatus,
         finalGhiChu
       ];
@@ -854,6 +525,15 @@ export function XnkDonHangDrawer({
         return;
       }
 
+      // 3. Ghi các lô vận chuyển
+      try {
+        await savePoLots(maPo.trim(), lotsApi.lots, lotsMap[oldPoCode] || [], { updateRow, deleteRow, appendRows });
+      } catch (lotErr) {
+        console.error('Lỗi lưu lô vận chuyển của PO:', lotErr);
+        setErrorMsg('Không lưu được lô vận chuyển. Kiểm tra trên Google Sheets đã có trang tính "XNK_LO_HANG" (dòng 1 là tiêu đề) chưa!');
+        return;
+      }
+
       if (targetSheetRow) {
         await updateRow('xnk_donhang', targetSheetRow, rowValues);
         if (logAuditAction) {
@@ -890,14 +570,9 @@ export function XnkDonHangDrawer({
     }
   };
 
-  return (
-    <Drawer
-      isOpen={isOpen}
-      onClose={onClose}
-      title={editItem ? `Cập Nhật Đơn Hàng PO: ${maPo}` : 'Tạo Đơn Hàng Sản Xuất Mới (PO)'}
-      maxWidth="max-w-5xl"
-    >
-      <form onSubmit={handleSubmit} className="space-y-5">
+  const formBody = (
+      <form onSubmit={readOnly ? (e) => e.preventDefault() : handleSubmit} className="space-y-5">
+        <fieldset disabled={readOnly} className="space-y-5 min-w-0">
         {errorMsg && (
           <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1095,14 +770,20 @@ export function XnkDonHangDrawer({
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">SL nhận thực tế</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={line.slg_thuc_nhan}
-                        onChange={(e) => updateLine(line.uid, { slg_thuc_nhan: e.target.value })}
-                        placeholder="Khi kho nhận hàng"
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                      />
+                      {hasLots ? (
+                        <div className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-emerald-700" title="Tổng thực nhận của các lô vận chuyển">
+                          {lotReceived && lotReceived[lineKey(line)] !== undefined ? formatNumber(lotReceived[lineKey(line)]) : '—'} <span className="text-[10px] text-slate-400 font-semibold">(theo lô)</span>
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          min="0"
+                          value={line.slg_thuc_nhan}
+                          onChange={(e) => updateLine(line.uid, { slg_thuc_nhan: e.target.value })}
+                          placeholder="Khi kho nhận hàng"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -1177,7 +858,7 @@ export function XnkDonHangDrawer({
         </div>
 
         {/* ============================================================ */}
-        {/* PHẦN 3: TIẾN ĐỘ LỊCH TRÌNH & KẾ HOẠCH PHÂN PHỐI (6 CHẶNG)    */}
+        {/* PHẦN 3: TIẾN ĐỘ LỊCH TRÌNH & KẾ HOẠCH PHÂN PHỐI (CÁC CHẶNG) */}
         {/* Yêu cầu 1: Cho luôn vào thông tin đơn hàng                   */}
         {/* Yêu cầu 2: Kế hoạch phân phối đưa vào tiến độ lịch trình     */}
         {/* Yêu cầu 3: Từ ngày chặng này = Đến ngày chặng trước          */}
@@ -1189,7 +870,7 @@ export function XnkDonHangDrawer({
             <div>
               <span className="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-indigo-600" />
-                3. Tiến độ lịch trình & Kế hoạch phân phối (6 chặng liên hoàn)
+                3. Tiến độ lịch trình & Kế hoạch phân phối ({PO_STAGES.length} chặng liên hoàn)
               </span>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 ⚡ Tự động nối tiếp: <strong>Từ ngày của quy trình này là Đến ngày của quy trình trước</strong>. Bạn có thể sửa trực tiếp <strong>Số ngày</strong> hoặc <strong>Ngày đến</strong>!
@@ -1208,7 +889,7 @@ export function XnkDonHangDrawer({
                 }`}
               >
                 <Table className="w-3.5 h-3.5" />
-                <span>Bảng chi tiết 6 chặng</span>
+                <span>Bảng chi tiết {PO_STAGES.length} chặng</span>
               </button>
 
               <button
@@ -1226,71 +907,18 @@ export function XnkDonHangDrawer({
             </div>
           </div>
 
-          {/* 3.1 DẠNG BẢNG MA TRẬN 6 CHẶNG CHI TIẾT */}
+          {/* 3.1 DẠNG BẢNG MA TRẬN CÁC CHẶNG CHI TIẾT */}
           {timelineViewMode === 'TABLE' && (
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50/90 text-slate-700 font-bold border-b border-slate-200 select-none">
-                    <th className="py-2.5 px-3 min-w-[170px]">Quy trình thực hiện</th>
-                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[130px]">Từ ngày</th>
-                    <th className="py-2.5 px-3 text-center whitespace-nowrap w-24">Số ngày (Sửa)</th>
-                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[130px]">Đến ngày (Sửa)</th>
-                    <th className="py-2.5 px-3 text-center whitespace-nowrap w-28">Trạng thái</th>
-                    <th className="py-2.5 px-3 min-w-[200px]">Thông tin chi tiết (Cho phép sửa)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {/* Chặng 1: Đặt hàng & Cọc */}
-                  <tr className={`hover:bg-slate-50/60 transition ${stage1Done ? 'bg-emerald-50/30' : ''}`}>
-                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-extrabold">1</span>
-                        <span>1. Đặt hàng & Cọc</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3">
-                      <input
-                        type="date"
-                        value={ngayDatHang}
-                        onChange={(e) => handleStart1Change(e.target.value)}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500"
-                        title="Ngày bắt đầu ký hợp đồng và cọc"
-                      />
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={daysStage1}
-                          onChange={(e) => handleDays1Change(e.target.value)}
-                          className="w-14 px-1.5 py-1 text-center bg-white border border-blue-200 rounded-lg text-xs font-bold text-blue-700 focus:ring-1 focus:ring-blue-500"
-                        />
-                        <span className="text-[11px] text-slate-500">ngày</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3">
-                      <input
-                        type="date"
-                        value={ngayCocXong}
-                        onChange={(e) => handleEnd1Change(e.target.value)}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStage(1)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
-                          stage1Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                        }`}
-                      >
-                        {stage1Done ? <Check className="w-3.5 h-3.5" /> : null}
-                        {stage1Done ? 'Đã xong' : 'Chưa xong'}
-                      </button>
-                    </td>
-                    <td className="py-2 px-3">
+            <PoStageTable
+              sched={sched}
+              done={mergedDone}
+              hiddenKeys={lotHiddenKeys}
+              hiddenNote={lotHiddenNote}
+              onToggle={handleToggleStage}
+              renderDetail={(key) => {
+                switch (key) {
+                  case 'coc':
+                    return (
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-500 text-[11px] whitespace-nowrap">Tiền cọc:</span>
                         <input
@@ -1302,56 +930,11 @@ export function XnkDonHangDrawer({
                           className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-amber-700"
                         />
                       </div>
-                    </td>
-                  </tr>
-
-                  {/* Chặng 2: Sản xuất hàng loạt */}
-                  <tr className={`hover:bg-slate-50/60 transition ${stage2Done ? 'bg-emerald-50/30' : ''}`}>
-                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-extrabold">2</span>
-                        <span>2. Sản xuất xưởng</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
-                        {formatDateVN(ngayCocXong)}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 1)</span>
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={daysStage2}
-                          onChange={(e) => handleDays2Change(e.target.value)}
-                          className="w-14 px-1.5 py-1 text-center bg-white border border-purple-200 rounded-lg text-xs font-bold text-purple-700 focus:ring-1 focus:ring-purple-500"
-                        />
-                        <span className="text-[11px] text-slate-500">ngày</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3">
-                      <input
-                        type="date"
-                        value={ngaySxXong}
-                        onChange={(e) => handleEnd2Change(e.target.value)}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-purple-500"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStage(2)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
-                          stage2Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                        }`}
-                      >
-                        {stage2Done ? <Check className="w-3.5 h-3.5" /> : null}
-                        {stage2Done ? 'Đã xong' : 'Chưa xong'}
-                      </button>
-                    </td>
-                    <td className="py-2 px-3">
+                    );
+                  case 'tk':
+                    return <span className="text-slate-500 text-[11px]">Duyệt file thiết kế, bao bì, tem nhãn với xưởng</span>;
+                  case 'sx':
+                    return (
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-500 text-[11px] whitespace-nowrap">Xưởng SX:</span>
                         <input
@@ -1362,56 +945,11 @@ export function XnkDonHangDrawer({
                           className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
                         />
                       </div>
-                    </td>
-                  </tr>
-
-                  {/* Chặng 3: Vận chuyển quốc tế */}
-                  <tr className={`hover:bg-slate-50/60 transition ${stage3Done ? 'bg-emerald-50/30' : ''}`}>
-                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-extrabold">3</span>
-                        <span>3. Vận chuyển QT</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
-                        {formatDateVN(ngaySxXong)}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 2)</span>
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={daysStage3}
-                          onChange={(e) => handleDays3Change(e.target.value)}
-                          className="w-14 px-1.5 py-1 text-center bg-white border border-indigo-200 rounded-lg text-xs font-bold text-indigo-700 focus:ring-1 focus:ring-indigo-500"
-                        />
-                        <span className="text-[11px] text-slate-500">ngày</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3">
-                      <input
-                        type="date"
-                        value={ngayDenCang}
-                        onChange={(e) => handleEnd3Change(e.target.value)}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-indigo-500"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStage(3)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
-                          stage3Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                        }`}
-                      >
-                        {stage3Done ? <Check className="w-3.5 h-3.5" /> : null}
-                        {stage3Done ? 'Đã xong' : 'Chưa xong'}
-                      </button>
-                    </td>
-                    <td className="py-2 px-3">
+                    );
+                  case 'ship':
+                    return <span className="text-slate-500 text-[11px]">Hàng hoàn thiện, đóng gói, chờ xếp lịch ship</span>;
+                  case 'vc':
+                    return (
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-500 text-[11px] whitespace-nowrap">Mã vận đơn:</span>
                         <input
@@ -1422,56 +960,9 @@ export function XnkDonHangDrawer({
                           className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-blue-700"
                         />
                       </div>
-                    </td>
-                  </tr>
-
-                  {/* Chặng 4: Hải quan & Cảng */}
-                  <tr className={`hover:bg-slate-50/60 transition ${stage4Done ? 'bg-emerald-50/30' : ''}`}>
-                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-[10px] font-extrabold">4</span>
-                        <span>4. Hải quan & Cảng</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
-                        {formatDateVN(ngayDenCang)}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 3)</span>
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={daysStage4}
-                          onChange={(e) => handleDays4Change(e.target.value)}
-                          className="w-14 px-1.5 py-1 text-center bg-white border border-cyan-200 rounded-lg text-xs font-bold text-cyan-700 focus:ring-1 focus:ring-cyan-500"
-                        />
-                        <span className="text-[11px] text-slate-500">ngày</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3">
-                      <input
-                        type="date"
-                        value={ngayThongQuan}
-                        onChange={(e) => handleEnd4Change(e.target.value)}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-cyan-500"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStage(4)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
-                          stage4Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                        }`}
-                      >
-                        {stage4Done ? <Check className="w-3.5 h-3.5" /> : null}
-                        {stage4Done ? 'Đã xong' : 'Chưa xong'}
-                      </button>
-                    </td>
-                    <td className="py-2 px-3">
+                    );
+                  case 'tq':
+                    return (
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-500 text-[11px] whitespace-nowrap">Cửa khẩu:</span>
                         <input
@@ -1482,59 +973,12 @@ export function XnkDonHangDrawer({
                           className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
                         />
                       </div>
-                    </td>
-                  </tr>
-
-                  {/* Chặng 5: Kho Việt Nam nhận hàng */}
-                  <tr className={`hover:bg-slate-50/60 transition ${stage5Done ? 'bg-emerald-50/30' : ''}`}>
-                    <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-extrabold">5</span>
-                        <span>5. Kho VN nhận hàng</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
-                        {formatDateVN(ngayThongQuan)}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 4)</span>
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={daysStage5}
-                          onChange={(e) => handleDays5Change(e.target.value)}
-                          className="w-14 px-1.5 py-1 text-center bg-white border border-emerald-200 rounded-lg text-xs font-bold text-emerald-700 focus:ring-1 focus:ring-emerald-500"
-                        />
-                        <span className="text-[11px] text-slate-500">ngày</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3">
-                      <input
-                        type="date"
-                        value={ngayKhoNhan}
-                        onChange={(e) => handleEnd5Change(e.target.value)}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStage(5)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
-                          stage5Done ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                        }`}
-                      >
-                        {stage5Done ? <Check className="w-3.5 h-3.5" /> : null}
-                        {stage5Done ? 'Đã xong' : 'Chưa xong'}
-                      </button>
-                    </td>
-                    <td className="py-2 px-3">
+                    );
+                  case 'kho':
+                    return (
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-500 text-[11px] whitespace-nowrap">SLG thực nhận:</span>
-                        {lines.length === 1 ? (
+                        {lines.length === 1 && !hasLots ? (
                           <input
                             type="number"
                             value={lines[0].slg_thuc_nhan}
@@ -1549,154 +993,40 @@ export function XnkDonHangDrawer({
                           </span>
                         )}
                       </div>
-                    </td>
-                  </tr>
-
-                  {/* Chặng 6: Kế hoạch phân phối & Mở bán hàng (Yêu cầu 2) */}
-                  <tr className={`hover:bg-slate-50/60 transition ${stage6Done ? 'bg-amber-50/50' : 'bg-amber-50/20'}`}>
-                    <td className="py-2.5 px-3 font-bold text-amber-900 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-[10px] font-extrabold">6</span>
-                        <span>6. Phân phối & Mở bán</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <span className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 inline-block">
-                        {formatDateVN(ngayKhoNhan)}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">(= Đến Chặng 5)</span>
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={daysStage6}
-                          onChange={(e) => handleDays6Change(e.target.value)}
-                          title="Số ngày trữ kho trước khi mở bán (0 = Bán ngay)"
-                          className="w-14 px-1.5 py-1 text-center bg-white border border-amber-300 rounded-lg text-xs font-bold text-amber-800 focus:ring-1 focus:ring-amber-500"
-                        />
-                        <span className="text-[11px] text-slate-500">ngày</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-3">
-                      <input
-                        type="date"
-                        value={ngayKeHoachBan}
-                        onChange={(e) => handleEnd6Change(e.target.value)}
-                        className="px-2 py-1 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-900 focus:ring-1 focus:ring-amber-500"
-                        title="Ngày dự kiến mở bán hàng"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStage(6)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
-                          stage6Done ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                        }`}
-                      >
-                        {stage6Done ? <Check className="w-3.5 h-3.5" /> : null}
-                        {stage6Done ? 'Đang bán' : 'Chưa bán'}
-                      </button>
-                    </td>
-                    <td className="py-2 px-3">
+                    );
+                  case 'ban':
+                    return (
                       <select
-                        value={keHoachBanType}
-                        onChange={(e) => handlePlanTypeChange(e.target.value)}
+                        value={sched.planType}
+                        onChange={(e) => sched.setPlanType(e.target.value)}
                         className="w-full px-2 py-1 bg-white border border-amber-300 rounded-lg text-xs font-bold text-amber-800 outline-none"
                       >
                         <option value="Bán ngay">⚡ Bán ngay (Bán ngay khi về kho)</option>
                         <option value="Bán sau (Trữ kho)">📦 Bán sau (Trữ kho / Theo chiến dịch)</option>
                       </select>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                    );
+                  default:
+                    return null;
+                }
+              }}
+            />
           )}
 
           {/* 3.2 DẠNG LỊCH TIMELINE GANTT TRỰC QUAN */}
           {timelineViewMode === 'CALENDAR' && (
-            <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-2xs">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="text-xs font-bold text-slate-800">
-                  Sơ đồ thanh thời gian tiến độ chuỗi cung ứng (Gantt waterfall)
-                </span>
-                <span className="text-xs text-slate-500">
-                  Khởi động: <strong>{formatDateVN(ngayDatHang) || 'Chưa có'}</strong> ➔ Mở bán: <strong>{formatDateVN(ngayKeHoachBan) || 'Dự kiến'}</strong>
-                </span>
-              </div>
-
-              <div className="space-y-3 pt-1">
-                {/* Thanh 1 */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-bold text-slate-700">1. Đặt hàng & Cọc</span>
-                    <span className="text-slate-500">{daysStage1} ngày ({formatDateVN(ngayDatHang)} ➔ {formatDateVN(ngayCocXong)})</span>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-300 ${stage1Done ? 'bg-emerald-500 w-full' : 'bg-blue-400 w-3/4'}`} />
-                  </div>
-                </div>
-
-                {/* Thanh 2 */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-bold text-slate-700">2. Sản xuất hàng loạt</span>
-                    <span className="text-slate-500">{daysStage2} ngày ({formatDateVN(ngayCocXong)} ➔ {formatDateVN(ngaySxXong)})</span>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-300 ${stage2Done ? 'bg-emerald-500 w-full' : ngaySxXong ? 'bg-purple-500 w-2/3' : 'bg-slate-200 w-1/4'}`} />
-                  </div>
-                </div>
-
-                {/* Thanh 3 */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-bold text-slate-700">3. Vận chuyển quốc tế</span>
-                    <span className="text-slate-500">{daysStage3} ngày ({formatDateVN(ngaySxXong)} ➔ {formatDateVN(ngayDenCang)}) {trackingVanChuyen ? `• VĐ: ${trackingVanChuyen}` : ''}</span>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-300 ${stage3Done ? 'bg-emerald-500 w-full' : trackingVanChuyen ? 'bg-indigo-500 w-1/2' : 'bg-slate-200 w-0'}`} />
-                  </div>
-                </div>
-
-                {/* Thanh 4 */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-bold text-slate-700">4. Hải quan & Cảng thông quan</span>
-                    <span className="text-slate-500">{daysStage4} ngày ({formatDateVN(ngayDenCang)} ➔ {formatDateVN(ngayThongQuan)})</span>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-300 ${stage4Done ? 'bg-emerald-500 w-full' : ngayThongQuan ? 'bg-cyan-500 w-1/2' : 'bg-slate-200 w-0'}`} />
-                  </div>
-                </div>
-
-                {/* Thanh 5 */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-bold text-slate-700">5. Kho Việt Nam nhận hàng</span>
-                    <span className="text-slate-500">{daysStage5} ngày ({formatDateVN(ngayThongQuan)} ➔ {formatDateVN(ngayKhoNhan)}) {slgThucNhan ? `• ${formatNumber(slgThucNhan)} cái` : ''}</span>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-300 ${stage5Done ? 'bg-emerald-500 w-full' : ngayKhoNhan ? 'bg-emerald-400 w-3/4' : 'bg-slate-200 w-0'}`} />
-                  </div>
-                </div>
-
-                {/* Thanh 6 */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-bold text-amber-900">6. Phân phối & Mở bán ({keHoachBanType})</span>
-                    <span className="text-amber-700 font-semibold">{daysStage6} ngày lưu kho • Mở bán: {formatDateVN(ngayKeHoachBan)}</span>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-300 ${stage6Done ? 'bg-amber-500 w-full' : 'bg-amber-300 w-1/2'}`} />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <PoStageGantt
+              sched={sched}
+              done={mergedDone}
+              hiddenKeys={lotHiddenKeys}
+              extraText={{
+                vc: hasLots ? `${lotsApi.lots.length} lô` : (trackingVanChuyen ? `VĐ: ${trackingVanChuyen}` : ''),
+                kho: slgThucNhan ? `${formatNumber(slgThucNhan)} cái` : ''
+              }}
+            />
           )}
+
+          {/* 3.3 CHIA LÔ VẬN CHUYỂN (chặng Vận chuyển QT -> Thông quan -> Kho nhận theo từng lô) */}
+          <PoLotsPanel lotsApi={lotsApi} lines={lines} defaultStart={lotDefaultStart} canSplit={canSplitLots} />
         </div>
 
         {/* ============================================================ */}
@@ -1715,7 +1045,30 @@ export function XnkDonHangDrawer({
           />
         </div>
 
+        </fieldset>
+
         {/* Footer actions */}
+        {readOnly ? (!embedded && (
+          <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-slate-200 font-bold text-xs text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+            >
+              Đóng
+            </button>
+            {onRequestEdit && (
+              <button
+                type="button"
+                onClick={onRequestEdit}
+                className="px-6 py-2.5 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 shadow-md transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Save className="w-4 h-4" />
+                <span>Chỉnh sửa đơn PO</span>
+              </button>
+            )}
+          </div>
+        )) : (
         <div className="flex items-center justify-between pt-3 border-t border-slate-200">
           <div className="flex items-center gap-2">
             <button
@@ -1753,7 +1106,22 @@ export function XnkDonHangDrawer({
             <span>{isSaving ? 'Đang lưu...' : 'Lưu Đơn Hàng PO'}</span>
           </button>
         </div>
+        )}
       </form>
+  );
+
+  if (embedded) return formBody;
+
+  return (
+    <Drawer
+      isOpen={isOpen}
+      onClose={onClose}
+      title={readOnly
+        ? `Chi Tiết Đơn Hàng PO: ${maPo}`
+        : (editItem ? `Cập Nhật Đơn Hàng PO: ${maPo}` : 'Tạo Đơn Hàng Sản Xuất Mới (PO)')}
+      maxWidth="max-w-5xl"
+    >
+      {formBody}
     </Drawer>
   );
 }

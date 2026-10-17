@@ -7,6 +7,8 @@ import {
   cleanNumber 
 } from '../../../utils/formatters';
 import { stripTiendoMeta, XnkTrackingMatrixContent } from './XnkTrackingModal';
+import { XnkDonHangDrawer } from './XnkDonHangDrawer';
+import { PoSummaryTab } from './PoSummaryTab';
 import { 
   X, 
   Lightbulb, 
@@ -32,7 +34,8 @@ import {
   ArrowRight,
   Minimize2,
   Square,
-  Maximize2
+  Maximize2,
+  BarChart3
 } from 'lucide-react';
 import { buildPoLinesMap, getPoLines, poHasLine } from './xnkPoLines';
 
@@ -267,6 +270,9 @@ export function XnkChiTietModal({
     return [];
   }, [item, type, allOrders, relatedSamples, currentIdea, poLinesMap]);
 
+  // Mở chi tiết từ chính 1 PO -> tab Đơn hàng PO hiện form chỉ xem
+  const isPoDetail = type === 'donhang' || type === 'tiendo';
+
   // Selected PO for Timeline View
   const selectedPo = useMemo(() => {
     if (relatedOrders.length === 0) return null;
@@ -329,7 +335,7 @@ export function XnkChiTietModal({
       if (relatedOrders.length > 0 && selectedPo) {
         tabs.push({
           id: 'TIENDO',
-          label: 'Tiến độ 6 chặng',
+          label: 'Tiến độ 8 chặng',
           icon: Clock,
           color: 'indigo'
         });
@@ -371,7 +377,7 @@ export function XnkChiTietModal({
       if (relatedOrders.length > 0 && selectedPo) {
         tabs.push({
           id: 'TIENDO',
-          label: 'Tiến độ 6 chặng',
+          label: 'Tiến độ 8 chặng',
           icon: Clock,
           color: 'indigo'
         });
@@ -411,9 +417,17 @@ export function XnkChiTietModal({
       // Bên phải là tiến độ
       tabs.push({
         id: 'TIENDO',
-        label: 'Tiến độ 6 chặng',
+        label: 'Tiến độ 8 chặng',
         icon: Clock,
         color: 'indigo'
+      });
+
+      // Tổng hợp đơn: đặt / đi / về / tiền / cước
+      tabs.push({
+        id: 'TONGHOP',
+        label: 'Tổng hợp',
+        icon: BarChart3,
+        color: 'emerald'
       });
 
       // k có ncc!
@@ -663,7 +677,37 @@ export function XnkChiTietModal({
           {/* ============================================================ */}
           {/* TAB 1: ĐƠN HÀNG SẢN XUẤT PO                                   */}
           {/* ============================================================ */}
-          {activeTab === 'DONHANG' && (
+          {/* Xem chi tiết 1 PO: hiện y hệt form chỉnh sửa nhưng chỉ xem */}
+          {activeTab === 'DONHANG' && isPoDetail && (
+            <div className="space-y-3.5">
+              {relatedOrders.length > 1 && (
+                <div className="flex items-center gap-1.5 p-2 bg-blue-50/40 rounded-xl overflow-x-auto border border-blue-100">
+                  <span className="text-blue-900 font-bold text-[11px] whitespace-nowrap pl-1">Chọn đơn PO:</span>
+                  {relatedOrders.map((o, idx) => (
+                    <button
+                      key={o.ma_po || idx}
+                      type="button"
+                      onClick={() => setSelectedPoIndex(idx)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                        selectedPoIndex === idx ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                      }`}
+                    >
+                      {o.ma_po}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <XnkDonHangDrawer
+                isOpen={true}
+                embedded={true}
+                readOnly={true}
+                editItem={selectedPo}
+                onClose={onClose}
+              />
+            </div>
+          )}
+
+          {activeTab === 'DONHANG' && !isPoDetail && (
             <div className="space-y-3.5">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
@@ -795,7 +839,7 @@ export function XnkChiTietModal({
                             className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100 transition flex items-center gap-1 cursor-pointer"
                           >
                             <Clock className="w-3.5 h-3.5" />
-                            <span>Xem tiến độ 6 chặng</span>
+                            <span>Xem tiến độ 8 chặng</span>
                           </button>
 
                           {onOpenEditTracking && (
@@ -1087,7 +1131,7 @@ export function XnkChiTietModal({
                     </div>
                   )}
 
-                  {/* Giao diện Bảng ma trận 6 chặng (Nhập & Lưu) + Stepper Lịch trình trực quan như Ảnh 1 */}
+                  {/* Giao diện Bảng ma trận 8 chặng (Nhập & Lưu) + Stepper Lịch trình trực quan như Ảnh 1 */}
                   <XnkTrackingMatrixContent
                     order={selectedPo}
                     embedded={true}
@@ -1099,6 +1143,11 @@ export function XnkChiTietModal({
                 </div>
               )}
             </div>
+          )}
+
+          {/* TAB: TỔNG HỢP ĐƠN PO */}
+          {activeTab === 'TONGHOP' && selectedPo && (
+            <PoSummaryTab order={selectedPo} />
           )}
 
           {/* ============================================================ */}
