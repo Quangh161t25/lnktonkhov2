@@ -6,7 +6,7 @@ import {
   formatNumber, 
   cleanNumber 
 } from '../../../utils/formatters';
-import { stripTiendoMeta, XnkTrackingMatrixContent } from './XnkTrackingModal';
+import { stripTiendoMeta, XnkTrackingMatrixContent, XnkTrackingModal } from './XnkTrackingModal';
 import { XnkDonHangDrawer } from './XnkDonHangDrawer';
 import { PoSummaryTab } from './PoSummaryTab';
 import { 
@@ -56,13 +56,27 @@ export function XnkChiTietModal({
     xnkMauData, 
     xnkDonHangData, 
     xnkDonHangCtData,
-    usersData 
+    usersData,
+    fetchModule
   } = useData();
 
   // Active Tab inside Detail Modal
   const [activeTab, setActiveTab] = useState('YTUONG'); // 'YTUONG' | 'MAU' | 'DONHANG' | 'TIENDO' | 'NCC'
   const [selectedPoIndex, setSelectedPoIndex] = useState(0);
   const [drawerSize, setDrawerSize] = useState('medium'); // 'small' | 'medium' | 'full'
+  const [trackingModalPo, setTrackingModalPo] = useState(null);
+
+  // Đảm bảo dữ liệu đơn hàng và chi tiết SP của đơn hàng luôn sẵn sàng
+  useEffect(() => {
+    if (isOpen) {
+      if (!xnkDonHangCtData || xnkDonHangCtData.length <= 1) {
+        fetchModule('xnk_donhang_ct');
+      }
+      if (!xnkDonHangData || xnkDonHangData.length <= 1) {
+        fetchModule('xnk_donhang');
+      }
+    }
+  }, [isOpen, xnkDonHangCtData, xnkDonHangData, fetchModule]);
 
   // 1. Parsed Ý tưởng
   const allIdeas = useMemo(() => {
@@ -215,8 +229,12 @@ export function XnkChiTietModal({
     }
     if (type === 'ncc') {
       const nccName = String(item.name || item.ten_ncc || item.ho_ten || '').trim().toLowerCase();
-      if (!nccName) return [];
-      return allSamples.filter(s => String(s.ten_ncc || '').trim().toLowerCase() === nccName);
+      const nccId = String(item.id || '').trim().toLowerCase();
+      if (!nccName && !nccId) return [];
+      return allSamples.filter(s => {
+        const sNcc = String(s.ten_ncc || '').trim().toLowerCase();
+        return (nccName && sNcc === nccName) || (nccId && sNcc === nccId);
+      });
     }
     return [];
   }, [item, type, allSamples, currentIdea, poLinesMap]);
@@ -264,11 +282,51 @@ export function XnkChiTietModal({
     }
     if (type === 'ncc') {
       const nccName = String(item.name || item.ten_ncc || item.ho_ten || '').trim().toLowerCase();
-      if (!nccName) return [];
-      return allOrders.filter(o => String(o.ten_ncc || '').trim().toLowerCase() === nccName);
+      const nccId = String(item.id || '').trim().toLowerCase();
+      if (!nccName && !nccId) return [];
+      return allOrders.filter(o => {
+        const oNcc = String(o.ten_ncc || '').trim().toLowerCase();
+        return (nccName && oNcc === nccName) || (nccId && oNcc === nccId);
+      });
     }
     return [];
   }, [item, type, allOrders, relatedSamples, currentIdea, poLinesMap]);
+
+  // Danh mục tổng hợp tất cả các sản phẩm & mã SKU đã đặt từ NCC này
+  const nccProductsSummary = useMemo(() => {
+    if (type !== 'ncc') return [];
+    const prodMap = new Map();
+    relatedOrders.forEach(order => {
+      const lines = getPoLines(order, poLinesMap);
+      lines.forEach(l => {
+        const key = (l.sku || l.ten_sp || '').trim();
+        if (!key) return;
+        if (!prodMap.has(key)) {
+          prodMap.set(key, {
+            sku: l.sku || '',
+            ten_sp: l.ten_sp || key,
+            tong_sl: 0,
+            don_gia_cuoi: cleanNumber(l.don_gia) || 0,
+            tong_thanh_tien: 0,
+            cac_don_po: new Set(),
+            thuc_nhan: 0
+          });
+        }
+        const itemObj = prodMap.get(key);
+        const sl = cleanNumber(l.so_luong) || 0;
+        const dg = cleanNumber(l.don_gia) || 0;
+        const tt = cleanNumber(l.thanh_tien) || (sl * dg);
+        itemObj.tong_sl += sl;
+        itemObj.tong_thanh_tien += tt;
+        if (dg > 0) itemObj.don_gia_cuoi = dg;
+        if (order.ma_po) itemObj.cac_don_po.add(order.ma_po);
+        if (l.slg_thuc_nhan !== '' && l.slg_thuc_nhan !== undefined) {
+          itemObj.thuc_nhan += cleanNumber(l.slg_thuc_nhan) || 0;
+        }
+      });
+    });
+    return Array.from(prodMap.values());
+  }, [type, relatedOrders, poLinesMap]);
 
   // Mở chi tiết từ chính 1 PO -> tab Đơn hàng PO hiện form chỉ xem
   const isPoDetail = type === 'donhang' || type === 'tiendo';
@@ -458,6 +516,15 @@ export function XnkChiTietModal({
           color: 'blue',
           count: relatedOrders.length
         });
+
+        if (selectedPo) {
+          tabs.push({
+            id: 'TIENDO',
+            label: 'Tiến độ 8 chặng',
+            icon: Clock,
+            color: 'indigo'
+          });
+        }
       }
     }
 
@@ -739,19 +806,31 @@ export function XnkChiTietModal({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {relatedOrders.map((po, idx) => (
+                  {relatedOrders.map((po, idx) => {
+                    const poLines = getPoLines(po, poLinesMap);
+                    return (
                     <div 
                       key={po.ma_po || idx}
                       className="p-4 bg-white border border-slate-200 rounded-2xl hover:border-blue-300 transition shadow-2xs space-y-3"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="px-2.5 py-1 bg-blue-100 text-blue-800 font-extrabold rounded-lg text-xs">
                             {po.ma_po}
                           </span>
                           <span className="font-bold text-slate-800 text-sm">
                             {po.ten_sp}
                           </span>
+                          {/* Badges tất cả mã SKU trong đơn hàng */}
+                          {poLines.filter(l => l.sku).map((line, lIdx) => (
+                            <span 
+                              key={lIdx} 
+                              className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200"
+                              title={`SKU: ${line.sku} - ${line.ten_sp}`}
+                            >
+                              {line.sku}
+                            </span>
+                          ))}
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -812,6 +891,116 @@ export function XnkChiTietModal({
                         </div>
                       </div>
 
+                      {/* Bảng chi tiết sản phẩm / SKU trong đơn hàng PO đã đặt */}
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                        <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                            <Package className="w-3.5 h-3.5 text-blue-600" />
+                            Bảng sản phẩm / SKU đặt hàng ({poLines.length} mặt hàng)
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-medium">
+                            Tổng đặt: <strong className="text-slate-800">{formatNumber(poLines.reduce((s, l) => s + (cleanNumber(l.so_luong) || 0), 0))}</strong> cái
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200">
+                              <tr>
+                                <th className="py-2.5 px-3 text-center w-10">STT</th>
+                                <th className="py-2.5 px-3 whitespace-nowrap">Mã SKU</th>
+                                <th className="py-2.5 px-3">Tên sản phẩm</th>
+                                {poLines.some(l => l.id_mau) && (
+                                  <th className="py-2.5 px-2 text-center whitespace-nowrap">Mã mẫu</th>
+                                )}
+                                <th className="py-2.5 px-3 text-right whitespace-nowrap">Số lượng đặt</th>
+                                <th className="py-2.5 px-3 text-right whitespace-nowrap">Đơn giá</th>
+                                <th className="py-2.5 px-3 text-right whitespace-nowrap">Thành tiền</th>
+                                {poLines.some(l => l.slg_thuc_nhan !== '' && l.slg_thuc_nhan !== undefined) && (
+                                  <th className="py-2.5 px-3 text-right whitespace-nowrap">Thực nhận</th>
+                                )}
+                                {poLines.some(l => l.ghi_chu) && (
+                                  <th className="py-2.5 px-3 whitespace-nowrap">Ghi chú</th>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              {poLines.map((line, lIdx) => (
+                                <tr key={line._sheetRow || lIdx} className="hover:bg-blue-50/20 transition">
+                                  <td className="py-2.5 px-3 text-center text-slate-400 font-medium">
+                                    {line.stt || lIdx + 1}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono font-bold whitespace-nowrap">
+                                    {line.sku ? (
+                                      <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs">
+                                        {line.sku}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400 italic">Chưa có SKU</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-semibold text-slate-900">
+                                    {line.ten_sp || 'Chưa đặt tên'}
+                                  </td>
+                                  {poLines.some(l => l.id_mau) && (
+                                    <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                                      {line.id_mau ? (
+                                        <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 text-[11px] font-bold">
+                                          {line.id_mau}
+                                        </span>
+                                      ) : '-'}
+                                    </td>
+                                  )}
+                                  <td className="py-2.5 px-3 text-right font-bold text-slate-800 whitespace-nowrap">
+                                    {formatNumber(line.so_luong)}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right text-slate-600 whitespace-nowrap">
+                                    {line.don_gia ? formatCurrency(line.don_gia) : '-'}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
+                                    {line.thanh_tien 
+                                      ? formatCurrency(line.thanh_tien) 
+                                      : formatCurrency((cleanNumber(line.so_luong) || 0) * (cleanNumber(line.don_gia) || 0))}
+                                  </td>
+                                  {poLines.some(l => l.slg_thuc_nhan !== '' && l.slg_thuc_nhan !== undefined) && (
+                                    <td className="py-2.5 px-3 text-right font-semibold text-indigo-700 whitespace-nowrap">
+                                      {line.slg_thuc_nhan !== '' && line.slg_thuc_nhan !== undefined ? formatNumber(line.slg_thuc_nhan) : '-'}
+                                    </td>
+                                  )}
+                                  {poLines.some(l => l.ghi_chu) && (
+                                    <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-[180px] truncate" title={line.ghi_chu}>
+                                      {line.ghi_chu || '-'}
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                            {poLines.length > 1 && (
+                              <tfoot className="bg-slate-50/90 font-bold border-t border-slate-200 text-slate-700">
+                                <tr>
+                                  <td colSpan={poLines.some(l => l.id_mau) ? 4 : 3} className="py-2.5 px-3 text-right text-slate-600">
+                                    Tổng cộng ({poLines.length} mặt hàng):
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right text-blue-700">
+                                    {formatNumber(poLines.reduce((s, l) => s + (cleanNumber(l.so_luong) || 0), 0))} cái
+                                  </td>
+                                  <td className="py-2.5 px-3"></td>
+                                  <td className="py-2.5 px-3 text-right text-emerald-700">
+                                    {formatCurrency(poLines.reduce((s, l) => s + (cleanNumber(l.thanh_tien) || (cleanNumber(l.so_luong) * cleanNumber(l.don_gia)) || 0), 0))}
+                                  </td>
+                                  {poLines.some(l => l.slg_thuc_nhan !== '' && l.slg_thuc_nhan !== undefined) && (
+                                    <td className="py-2.5 px-3 text-right text-indigo-700">
+                                      {formatNumber(poLines.reduce((s, l) => s + (cleanNumber(l.slg_thuc_nhan) || 0), 0))} cái
+                                    </td>
+                                  )}
+                                  {poLines.some(l => l.ghi_chu) && <td></td>}
+                                </tr>
+                              </tfoot>
+                            )}
+                          </table>
+                        </div>
+                      </div>
+
                       {/* Ghi chú đơn nếu có */}
                       {stripTiendoMeta(po.ghi_chu) && (
                         <div className="p-2.5 bg-blue-50/40 rounded-xl border border-blue-100 text-[11px]">
@@ -837,24 +1026,28 @@ export function XnkChiTietModal({
                               setActiveTab('TIENDO');
                             }}
                             className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100 transition flex items-center gap-1 cursor-pointer"
+                            title="Xem tiến độ 8 chặng của đơn này"
                           >
                             <Clock className="w-3.5 h-3.5" />
                             <span>Xem tiến độ 8 chặng</span>
                           </button>
 
-                          {onOpenEditTracking && (
-                            <button
-                              type="button"
-                              onClick={() => {
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onOpenEditTracking) {
                                 onClose();
                                 onOpenEditTracking(po);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition flex items-center gap-1 cursor-pointer"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                              <span>Cập nhật tiến độ</span>
-                            </button>
-                          )}
+                              } else {
+                                setTrackingModalPo(po);
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition flex items-center gap-1 cursor-pointer"
+                            title="Cập nhật tiến độ đơn này"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Cập nhật tiến độ</span>
+                          </button>
 
                           {onOpenEditPo && (
                             <button
@@ -872,7 +1065,8 @@ export function XnkChiTietModal({
                         </div>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </div>
@@ -1154,7 +1348,7 @@ export function XnkChiTietModal({
           {/* TAB 5: NHÀ CUNG CẤP / XƯỞNG                                   */}
           {/* ============================================================ */}
           {activeTab === 'NCC' && (
-            <div className="space-y-3.5">
+            <div className="space-y-4">
               <div className="p-4 bg-emerald-50/40 border border-emerald-200 rounded-2xl space-y-2.5">
                 <div className="flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-emerald-700" />
@@ -1187,6 +1381,209 @@ export function XnkChiTietModal({
                   </div>
                 )}
               </div>
+
+              {/* BẢNG 1: TỔNG HỢP CÁC MÃ HÀNG SKU SẢN PHẨM ĐÃ ĐẶT TỪ NCC NÀY */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-blue-600" />
+                    <span className="font-bold text-slate-800 text-xs">
+                      Danh mục mã hàng SKU & Sản phẩm đã đặt ({nccProductsSummary.length} mã hàng)
+                    </span>
+                  </div>
+                  {nccProductsSummary.length > 0 && (
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      Tổng số lượng: <strong className="text-blue-700">{formatNumber(nccProductsSummary.reduce((s, p) => s + p.tong_sl, 0))}</strong> cái
+                    </span>
+                  )}
+                </div>
+
+                {nccProductsSummary.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 italic">
+                    Chưa có mã hàng SKU nào được đặt với nhà cung cấp này.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50/70 text-slate-600 font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-3 text-center w-10">STT</th>
+                          <th className="py-2.5 px-3 whitespace-nowrap">Mã SKU</th>
+                          <th className="py-2.5 px-3">Tên sản phẩm</th>
+                          <th className="py-2.5 px-3 whitespace-nowrap">Đơn PO liên quan</th>
+                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Tổng SL đặt</th>
+                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Đơn giá gần nhất</th>
+                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Tổng thành tiền</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {nccProductsSummary.map((prod, pIdx) => (
+                          <tr key={prod.sku || pIdx} className="hover:bg-slate-50/60 transition">
+                            <td className="py-2.5 px-3 text-center text-slate-400 font-medium">{pIdx + 1}</td>
+                            <td className="py-2.5 px-3 font-mono font-bold whitespace-nowrap">
+                              {prod.sku ? (
+                                <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs">
+                                  {prod.sku}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 italic">Chưa có SKU</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-900">
+                              {prod.ten_sp}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <div className="flex flex-wrap items-center gap-1">
+                                {Array.from(prod.cac_don_po).map((poCode, cIdx) => (
+                                  <button
+                                    key={cIdx}
+                                    type="button"
+                                    onClick={() => {
+                                      const poIdx = relatedOrders.findIndex(o => o.ma_po === poCode);
+                                      if (poIdx !== -1) setSelectedPoIndex(poIdx);
+                                      setActiveTab('DONHANG');
+                                    }}
+                                    className="px-2 py-0.5 rounded bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 text-[11px] font-bold border border-slate-200 transition cursor-pointer"
+                                    title="Bấm để xem đơn hàng này"
+                                  >
+                                    {poCode}
+                                  </button>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-slate-800 whitespace-nowrap">
+                              {formatNumber(prod.tong_sl)} cái
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-600 whitespace-nowrap">
+                              {prod.don_gia_cuoi ? formatCurrency(prod.don_gia_cuoi) : '-'}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
+                              {formatCurrency(prod.tong_thanh_tien)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {nccProductsSummary.length > 1 && (
+                        <tfoot className="bg-slate-50 font-bold border-t border-slate-200 text-slate-700">
+                          <tr>
+                            <td colSpan={4} className="py-2.5 px-3 text-right text-slate-600">
+                              Tổng cộng ({nccProductsSummary.length} mã hàng):
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-blue-700">
+                              {formatNumber(nccProductsSummary.reduce((s, p) => s + p.tong_sl, 0))} cái
+                            </td>
+                            <td className="py-2.5 px-3"></td>
+                            <td className="py-2.5 px-3 text-right text-emerald-700">
+                              {formatCurrency(nccProductsSummary.reduce((s, p) => s + p.tong_thanh_tien, 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* BẢNG 2: BẢNG THÔNG TIN CÁC ĐƠN HÀNG PO ĐÃ ĐẶT */}
+              {relatedOrders.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart className="w-4 h-4 text-blue-600" />
+                      <span className="font-bold text-slate-800 text-xs">
+                        Bảng thông tin các đơn hàng PO đã đặt ({relatedOrders.length} đơn)
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      Tổng giá trị: <strong className="text-emerald-700">{formatCurrency(relatedOrders.reduce((s, o) => s + (cleanNumber(o.tong_tien) || 0), 0))}</strong>
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50/70 text-slate-600 font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-3 whitespace-nowrap">Mã PO</th>
+                          <th className="py-2.5 px-3 whitespace-nowrap">Ngày đặt</th>
+                          <th className="py-2.5 px-3">Sản phẩm / SKU</th>
+                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Số lượng</th>
+                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Tổng tiền</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap">Tình trạng</th>
+                          <th className="py-2.5 px-3 whitespace-nowrap">Về kho</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap">Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {relatedOrders.map((o, oIdx) => {
+                          const lines = getPoLines(o, poLinesMap);
+                          return (
+                            <tr key={o.ma_po || oIdx} className="hover:bg-slate-50/60 transition">
+                              <td className="py-2.5 px-3 font-bold text-blue-700 whitespace-nowrap">
+                                {o.ma_po}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                                {formatDateVN(o.ngay_dat_hang) || '-'}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-semibold text-slate-800">{o.ten_sp}</div>
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {lines.map((l, lIdx) => l.sku && (
+                                    <span key={lIdx} className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                      {l.sku}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-bold text-slate-800 whitespace-nowrap">
+                                {formatNumber(o.so_luong)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
+                                {formatCurrency(o.tong_tien)}
+                              </td>
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  {o.tinh_trang_cuoi || 'Đang xử lý'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                                {formatDateVN(o.ngay_kho_nhan) || '-'}
+                              </td>
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedPoIndex(oIdx);
+                                      setActiveTab('TIENDO');
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
+                                    title="Xem tiến độ 8 chặng của đơn này"
+                                  >
+                                    <Clock className="w-3 h-3" />
+                                    <span>Tiến độ 8 chặng</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedPoIndex(oIdx);
+                                      setActiveTab('DONHANG');
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
+                                    title="Xem chi tiết đơn này"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    <span>Chi tiết đơn</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1260,6 +1657,19 @@ export function XnkChiTietModal({
           </div>
         </div>
       </div>
+
+      {/* Standalone Tracking Modal popup nếu người dùng bấm Cập nhật tiến độ */}
+      {trackingModalPo && (
+        <XnkTrackingModal
+          isOpen={!!trackingModalPo}
+          onClose={() => setTrackingModalPo(null)}
+          order={trackingModalPo}
+          onSaved={() => {
+            fetchModule('xnk_donhang', true);
+            fetchModule('xnk_donhang_ct', true);
+          }}
+        />
+      )}
     </div>
   );
 }
