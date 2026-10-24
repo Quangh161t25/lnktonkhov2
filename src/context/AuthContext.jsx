@@ -199,6 +199,13 @@ export function AuthProvider({ children }) {
     if (moduleKey === 'home') return true;
     const roleKey = resolveRoleKey(currentUser.role);
     if (roleKey === 'ADMIN') return true;
+    // Giá trị sản phẩm: Chỉ Admin và Kế toán được xem
+    if (moduleKey === 'sanpham_giatri') {
+      return roleKey === 'ADMIN' || roleKey === 'KT';
+    }
+    if (moduleKey === 'sanpham_danhsach') {
+      return allowed.includes('sanpham') || allowed.includes('sanpham_danhsach');
+    }
     const allowed = getAllowedModules();
     if (allowed.includes(moduleKey)) return true;
     // Dự kiến hàng về & Dự báo nhập hàng nằm trong XNK nhưng vẫn dùng quyền riêng

@@ -51,6 +51,32 @@ export const PERMISSION_MODULE_GROUPS = [
         }
       },
       {
+        key: 'sanpham_danhsach',
+        name: 'Sản phẩm',
+        desc: 'Danh mục sản phẩm & tồn kho tổng',
+        actions: {
+          view: true,
+          viewDetail: 'sanpham.viewDetail',
+          add: 'sanpham.manage',
+          edit: 'sanpham.manage',
+          delete: 'sanpham.manage',
+          approve: null
+        }
+      },
+      {
+        key: 'sanpham_giatri',
+        name: 'Giá trị sản phẩm',
+        desc: 'Theo dõi giá bán (Cột C) & tổng giá trị tồn kho (chỉ Admin & Kế toán)',
+        actions: {
+          view: true,
+          viewDetail: 'sanpham.viewDetail',
+          add: 'sanpham.manage',
+          edit: 'sanpham.manage',
+          delete: 'sanpham.manage',
+          approve: null
+        }
+      },
+      {
         key: 'sanphamkho',
         name: 'Sản phẩm kho',
         desc: 'Tồn kho chi tiết theo từng kho',

@@ -8,6 +8,8 @@ export const DEFAULT_PERMISSIONS = {
     xuat: "Danh sách xuất",
     chuyenkho: "Điều chuyển kho",
     sanpham: "Danh sách sản phẩm",
+    sanpham_danhsach: "Sản phẩm",
+    sanpham_giatri: "Giá trị sản phẩm",
     sanphamkho: "Danh sách sản phẩm kho",
     cngiasp: "CN Giá SP",
     lendon: "Lên đơn",
@@ -25,7 +27,7 @@ export const DEFAULT_PERMISSIONS = {
   roles: {
     ADMIN: {
       modules: [
-        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanphamkho", "cngiasp", "lendon",
+        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanpham_danhsach", "sanpham_giatri", "sanphamkho", "cngiasp", "lendon",
         "ton_npp", "doisoat", "nhanvien", "khachhang", "dubaonhap", "xnk", "xnk_ytuong", "xnk_mau", "xnk_donhang", "caidat"
       ],
       actions: [
@@ -35,7 +37,7 @@ export const DEFAULT_PERMISSIONS = {
     },
     KT: {
       modules: [
-        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanphamkho", "cngiasp", "lendon", "ton_npp", "doisoat",
+        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanpham_danhsach", "sanpham_giatri", "sanphamkho", "cngiasp", "lendon", "ton_npp", "doisoat",
         "xnk", "xnk_ytuong", "xnk_mau", "xnk_donhang"
       ],
       actions: [
@@ -53,7 +55,7 @@ export const DEFAULT_PERMISSIONS = {
     },
     NPP: {
       modules: [
-        "sanpham", "xuat", "lendon", "ton_npp"
+        "sanpham", "sanpham_danhsach", "xuat", "lendon", "ton_npp"
       ],
       actions: []
     },

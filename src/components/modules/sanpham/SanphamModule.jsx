@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useSettings } from '../../../context/SettingsContext';
@@ -12,12 +12,15 @@ import { exportToExcel, downloadModuleTemplate } from '../../../services/excelSe
 import { calculateProductAggregates } from '../../../utils/calculations';
 import { formatNumber, formatCurrency, cleanNumber, matchesSearch } from '../../../utils/formatters';
 import { 
+  ArrowLeft,
   Plus, 
   Upload, 
   Download, 
   FileSpreadsheet, 
   Search, 
   Package, 
+  Coins,
+  ShieldCheck,
   Edit3, 
   Trash2,
   ExternalLink,
@@ -38,7 +41,26 @@ const DEFAULT_SANPHAM_COLUMNS = [
   { key: 'actions', label: 'Thao tác', width: 100, align: 'center', format: 'default' },
 ];
 
-export function SanphamModule({ onNavigateWithFilter }) {
+const DEFAULT_SANPHAM_GIATRI_COLUMNS = [
+  { key: 'image', label: 'Ảnh', width: 60, align: 'center', format: 'default' },
+  { key: 'id_sp', label: 'Mã sản phẩm', width: 120, align: 'left', format: 'bold' },
+  { key: 'ten_sp', label: 'Tên sản phẩm', width: 220, align: 'left', format: 'default' },
+  { key: 'ton_dau', label: 'Tồn đầu', width: 90, align: 'right', format: 'number' },
+  { key: 'tong_nhap', label: 'Tổng Nhập', width: 95, align: 'right', format: 'number' },
+  { key: 'tong_xuat', label: 'Tổng Xuất', width: 95, align: 'right', format: 'number' },
+  { key: 'ton_cuoi', label: 'Tồn cuối tổng', width: 105, align: 'right', format: 'number' },
+  { key: 'gia_ban', label: 'Giá bán (Cột C)', width: 120, align: 'right', format: 'currency' },
+  { key: 'gia_tri', label: 'Giá trị', width: 135, align: 'right', format: 'currency' },
+  { key: 'ghi_chu', label: 'Ghi chú', width: 140, align: 'left', format: 'default' },
+  { key: 'actions', label: 'Thao tác', width: 100, align: 'center', format: 'default' },
+];
+
+export function SanphamModule({ 
+  activeSubModule = 'sanpham', 
+  onBackToHub,
+  onSelectSubModule, 
+  onNavigateWithFilter 
+}) {
   const { 
     productData, 
     nhapData, 
@@ -58,9 +80,20 @@ export function SanphamModule({ onNavigateWithFilter }) {
   const { appSettings } = useSettings();
 
   const roleKey = currentUser ? resolveRoleKey(currentUser.role) : '';
+  const canAccessGiatri = roleKey === 'ADMIN' || roleKey === 'KT';
+  const isGiatriMode = activeSubModule === 'giatri' && canAccessGiatri;
   const lowStockThreshold = appSettings?.lowStockThreshold || 10;
 
-  // Column Manager Hook
+  // Auto fallback if user is not authorized to view Gia tri
+  useEffect(() => {
+    if (activeSubModule === 'giatri' && !canAccessGiatri) {
+      onSelectSubModule?.('sanpham_danhsach');
+    }
+  }, [activeSubModule, canAccessGiatri, onSelectSubModule]);
+
+  // Column Manager Hook - separate storage key and default columns per sub-module
+  const columnStorageKey = isGiatriMode ? 'sanpham_giatri' : 'sanpham';
+  const defaultColumns = isGiatriMode ? DEFAULT_SANPHAM_GIATRI_COLUMNS : DEFAULT_SANPHAM_COLUMNS;
   const {
     columns,
     visibleColumns,
@@ -73,7 +106,7 @@ export function SanphamModule({ onNavigateWithFilter }) {
     reorderColumns,
     setAllVisibility,
     resetToDefault
-  } = useColumnManager('sanpham', DEFAULT_SANPHAM_COLUMNS);
+  } = useColumnManager(columnStorageKey, defaultColumns);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState('ALL'); // 'ALL' | 'LOW' | 'IN_STOCK' | 'OUT_OF_STOCK'
@@ -85,8 +118,8 @@ export function SanphamModule({ onNavigateWithFilter }) {
   const [detailProductRow, setDetailProductRow] = useState(null);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
 
-  // Always fetch latest product & aggregated stock data on mount (avoiding raw sales/purchase downloads)
-  React.useEffect(() => {
+  // Always fetch latest product & aggregated stock data on mount
+  useEffect(() => {
     fetchModule('sanpham');
     const nppId = roleKey === 'NPP' ? currentUser?.id : '';
     const nppName = roleKey === 'NPP' ? currentUser?.name : '';
@@ -219,7 +252,7 @@ export function SanphamModule({ onNavigateWithFilter }) {
     };
   }, [accessibleRows, aggregates, lowStockThreshold]);
 
-  // Filtered rows - sorted by Tồn cuối tổng from highest to lowest
+  // Filtered rows - in giatri mode, sort by Gia tri then Ton cuoi; in sanpham mode sort by Ton cuoi
   const filteredRows = useMemo(() => {
     return accessibleRows.filter(row => {
       const id = (row[0] || '').toString().trim().toLowerCase();
@@ -239,11 +272,64 @@ export function SanphamModule({ onNavigateWithFilter }) {
     }).sort((a, b) => {
       const idA = (a[0] || '').toString().trim().toLowerCase();
       const idB = (b[0] || '').toString().trim().toLowerCase();
-      const tonCuoiA = (aggregates.get(idA)?.tonCuoi) || 0;
-      const tonCuoiB = (aggregates.get(idB)?.tonCuoi) || 0;
+      const aggA = aggregates.get(idA) || { tonCuoi: 0 };
+      const aggB = aggregates.get(idB) || { tonCuoi: 0 };
+      const tonCuoiA = aggA.tonCuoi || 0;
+      const tonCuoiB = aggB.tonCuoi || 0;
+
+      if (isGiatriMode) {
+        const priceA = cleanNumber(a[4]) || 0;
+        const priceB = cleanNumber(b[4]) || 0;
+        const valA = tonCuoiA > 0 ? tonCuoiA * priceA : 0;
+        const valB = tonCuoiB > 0 ? tonCuoiB * priceB : 0;
+        if (valB !== valA) return valB - valA;
+        return tonCuoiB - tonCuoiA;
+      }
+
       return tonCuoiB - tonCuoiA;
     });
-  }, [accessibleRows, aggregates, stockFilter, lowStockThreshold, searchTerm]);
+  }, [accessibleRows, aggregates, stockFilter, lowStockThreshold, searchTerm, isGiatriMode]);
+
+  // KPI statistics for Giá trị sản phẩm (Admin & Kế toán)
+  const giatriStats = useMemo(() => {
+    let totalProducts = accessibleRows.length;
+    let totalTonCuoi = 0;
+    let totalGiaTri = 0;
+    let filteredGiaTri = 0;
+    let productsWithPrice = 0;
+
+    accessibleRows.forEach(row => {
+      const id = (row[0] || '').toString().trim().toLowerCase();
+      const agg = aggregates.get(id) || { tonCuoi: 0 };
+      const tonCuoi = agg.tonCuoi || 0;
+      const price = cleanNumber(row[4]) || 0;
+      if (price > 0) productsWithPrice++;
+      if (tonCuoi > 0) {
+        totalTonCuoi += tonCuoi;
+        if (price > 0) {
+          totalGiaTri += tonCuoi * price;
+        }
+      }
+    });
+
+    filteredRows.forEach(row => {
+      const id = (row[0] || '').toString().trim().toLowerCase();
+      const agg = aggregates.get(id) || { tonCuoi: 0 };
+      const tonCuoi = agg.tonCuoi || 0;
+      const price = cleanNumber(row[4]) || 0;
+      if (tonCuoi > 0 && price > 0) {
+        filteredGiaTri += tonCuoi * price;
+      }
+    });
+
+    return {
+      totalProducts,
+      totalTonCuoi,
+      totalGiaTri,
+      filteredGiaTri,
+      productsWithPrice
+    };
+  }, [accessibleRows, filteredRows, aggregates]);
 
   // Paginated rows
   const paginatedRows = useMemo(() => {
@@ -281,22 +367,46 @@ export function SanphamModule({ onNavigateWithFilter }) {
   };
 
   const handleExportExcel = () => {
-    const headers = [
-      'Mã SP', 'Tên sản phẩm', 'Model', 'Link ảnh', 'Giá bán',
-      'Tồn đầu', 'Tổng Nhập', 'Tổng Xuất', 'Tồn cuối', 'Ghi chú'
-    ];
-    const data = [
-      headers,
-      ...filteredRows.map(r => {
-        const id = (r[0] || '').toString().trim().toLowerCase();
-        const agg = aggregates.get(id) || { tonDau: 0, tongNhap: 0, tongXuat: 0, tonCuoi: 0 };
-        return [
-          r[0], r[1], r[2], r[3], cleanNumber(r[4]),
-          agg.tonDau, agg.tongNhap, agg.tongXuat, agg.tonCuoi, r[5]
-        ];
-      })
-    ];
-    exportToExcel(data, `Danh_sach_san_pham_${Date.now()}.xlsx`, 'DS_SP');
+    if (isGiatriMode) {
+      const headers = [
+        'Mã SP', 'Tên sản phẩm', 'Model', 'Link ảnh',
+        'Tồn đầu', 'Tổng Nhập', 'Tổng Xuất', 'Tồn cuối',
+        'Giá bán (Cột C)', 'Giá trị (Tồn cuối x Giá bán)', 'Ghi chú'
+      ];
+      const data = [
+        headers,
+        ...filteredRows.map(r => {
+          const id = (r[0] || '').toString().trim().toLowerCase();
+          const agg = aggregates.get(id) || { tonDau: 0, tongNhap: 0, tongXuat: 0, tonCuoi: 0 };
+          const tonCuoi = agg.tonCuoi || 0;
+          const giaBan = cleanNumber(r[4]) || 0;
+          const giaTri = tonCuoi > 0 ? tonCuoi * giaBan : 0;
+          return [
+            r[0], r[1], r[2], r[3],
+            agg.tonDau, agg.tongNhap, agg.tongXuat, tonCuoi,
+            giaBan, giaTri, r[5]
+          ];
+        })
+      ];
+      exportToExcel(data, `Gia_tri_san_pham_${Date.now()}.xlsx`, 'GIA_TRI_SP');
+    } else {
+      const headers = [
+        'Mã SP', 'Tên sản phẩm', 'Model', 'Link ảnh', 'Giá bán',
+        'Tồn đầu', 'Tổng Nhập', 'Tổng Xuất', 'Tồn cuối', 'Ghi chú'
+      ];
+      const data = [
+        headers,
+        ...filteredRows.map(r => {
+          const id = (r[0] || '').toString().trim().toLowerCase();
+          const agg = aggregates.get(id) || { tonDau: 0, tongNhap: 0, tongXuat: 0, tonCuoi: 0 };
+          return [
+            r[0], r[1], r[2], r[3], cleanNumber(r[4]),
+            agg.tonDau, agg.tongNhap, agg.tongXuat, agg.tonCuoi, r[5]
+          ];
+        })
+      ];
+      exportToExcel(data, `Danh_sach_san_pham_${Date.now()}.xlsx`, 'DS_SP');
+    }
   };
 
   const handleImportExcelRows = async (excelRows) => {
@@ -314,14 +424,103 @@ export function SanphamModule({ onNavigateWithFilter }) {
     }
   };
 
-  const handleViewWarehouseStock = (productId) => {
-    if (onNavigateWithFilter) {
-      onNavigateWithFilter('sanphamkho', { productId });
-    }
-  };
-
   return (
     <div className="space-y-2">
+      {/* Submodule Switcher Header: Sản phẩm & Giá trị sản phẩm */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="flex items-center gap-2">
+          {onBackToHub && (
+            <button
+              onClick={onBackToHub}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+              title="Quay lại Hub Danh sách sản phẩm"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" />
+              <span>Quay lại</span>
+            </button>
+          )}
+
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl">
+            <button
+              onClick={() => onSelectSubModule?.('sanpham_danhsach')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                !isGiatriMode
+                  ? 'bg-white text-emerald-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              }`}
+            >
+              <Package className={`w-4 h-4 ${!isGiatriMode ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <span>Sản phẩm</span>
+            </button>
+
+            {canAccessGiatri && (
+              <button
+                onClick={() => onSelectSubModule?.('sanpham_giatri')}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  isGiatriMode
+                    ? 'bg-white text-amber-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                }`}
+              >
+                <Coins className={`w-4 h-4 ${isGiatriMode ? 'text-amber-600' : 'text-slate-400'}`} />
+                <span>Giá trị sản phẩm</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-amber-100 text-amber-800">
+                  Admin & KT
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 pr-2">
+          {isGiatriMode ? (
+            <span className="flex items-center gap-1.5 text-amber-800 font-semibold text-[11px] bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+              Cột C: Giá bán (Thật) & Cột Giá trị (Ảo = Tồn cuối × Giá bán)
+            </span>
+          ) : (
+            <span className="text-slate-500 font-medium text-[11px]">
+              Quản lý danh mục sản phẩm, biến động nhập xuất & tồn kho tổng
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* KPI Cards for Giá trị sản phẩm (Only in giatri mode) */}
+      {isGiatriMode && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tổng mã hàng</span>
+            <div className="mt-0.5 flex items-baseline gap-1.5">
+              <span className="text-base font-black text-slate-800">{formatNumber(giatriStats.totalProducts)}</span>
+              <span className="text-[10px] text-slate-500 font-medium">({giatriStats.productsWithPrice} SP có giá)</span>
+            </div>
+          </div>
+
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tổng lượng tồn kho</span>
+            <div className="mt-0.5">
+              <span className="text-base font-black text-blue-600">{formatNumber(giatriStats.totalTonCuoi)}</span>
+              <span className="text-[10px] text-slate-500 font-medium ml-1">sản phẩm</span>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-amber-50 to-amber-100/60 p-2.5 rounded-xl border border-amber-200 shadow-2xs">
+            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Tổng giá trị tồn kho</span>
+            <div className="mt-0.5">
+              <span className="text-base font-black text-amber-900">{formatCurrency(giatriStats.totalGiaTri)}</span>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/60 p-2.5 rounded-xl border border-emerald-200 shadow-2xs">
+            <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Giá trị đang lọc</span>
+            <div className="mt-0.5">
+              <span className="text-base font-black text-emerald-900">{formatCurrency(giatriStats.filteredGiaTri)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Controls */}
       <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-sm space-y-2">
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
@@ -346,7 +545,9 @@ export function SanphamModule({ onNavigateWithFilter }) {
                   setEditRow(null);
                   setIsDrawerOpen(true);
                 }}
-                className="px-3 py-1.5 bg-emerald-600 text-white font-bold rounded-lg text-xs hover:bg-emerald-700 shadow-sm transition flex items-center gap-1.5"
+                className={`px-3 py-1.5 text-white font-bold rounded-lg text-xs shadow-sm transition flex items-center gap-1.5 ${
+                  isGiatriMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
               >
                 <Plus className="w-3.5 h-3.5" />
                 Thêm sản phẩm
@@ -365,9 +566,13 @@ export function SanphamModule({ onNavigateWithFilter }) {
 
             <button
               onClick={handleExportExcel}
-              className="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 font-bold rounded-lg text-xs hover:bg-emerald-100 transition flex items-center gap-1.5"
+              className={`px-2.5 py-1.5 font-bold rounded-lg text-xs transition flex items-center gap-1.5 ${
+                isGiatriMode 
+                  ? 'bg-amber-50 text-amber-800 hover:bg-amber-100' 
+                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+              }`}
             >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
+              <Download className={`w-3.5 h-3.5 ${isGiatriMode ? 'text-amber-700' : 'text-emerald-600'}`} />
               Xuất Excel
             </button>
 
@@ -463,11 +668,12 @@ export function SanphamModule({ onNavigateWithFilter }) {
                   .map(col => {
                     const alignClass = col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left';
                     const widthStyle = col.width ? { width: `${col.width}px`, minWidth: `${col.width}px` } : {};
+                    const isSpecialGia = col.key === 'gia_ban' || col.key === 'gia_tri';
                     return (
                       <th 
                         key={col.key}
                         style={widthStyle}
-                        className={`py-2 px-2.5 whitespace-nowrap ${alignClass}`}
+                        className={`py-2 px-2.5 whitespace-nowrap ${alignClass} ${isSpecialGia ? 'bg-amber-50/70 text-amber-900' : ''}`}
                       >
                         {col.label}
                       </th>
@@ -567,6 +773,37 @@ export function SanphamModule({ onNavigateWithFilter }) {
                                 </td>
                               );
 
+                            case 'gia_ban': {
+                              const priceVal = cleanNumber(row[4]);
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 whitespace-nowrap text-right font-bold ${alignClass}`}>
+                                  {priceVal > 0 ? (
+                                    <span className="text-slate-800">{formatCurrency(priceVal)}</span>
+                                  ) : (
+                                    <span className="text-slate-400 font-normal italic text-[11px]">0 ₫</span>
+                                  )}
+                                </td>
+                              );
+                            }
+
+                            case 'gia_tri': {
+                              const priceVal = cleanNumber(row[4]) || 0;
+                              const valTon = tonCuoi > 0 ? tonCuoi * priceVal : 0;
+                              return (
+                                <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 whitespace-nowrap text-right font-extrabold ${alignClass}`}>
+                                  {valTon > 0 ? (
+                                    <span className="text-emerald-700 font-black">{formatCurrency(valTon)}</span>
+                                  ) : tonCuoi > 0 && priceVal === 0 ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                      Chưa có giá
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 font-normal text-[11px]">0 ₫</span>
+                                  )}
+                                </td>
+                              );
+                            }
+
                             case 'ghi_chu':
                               return (
                                 <td key={col.key} style={widthStyle} className={`py-1.5 px-2.5 text-slate-500 max-w-[180px] truncate ${alignClass} ${isCustomBold ? 'font-bold' : ''}`}>
@@ -604,7 +841,7 @@ export function SanphamModule({ onNavigateWithFilter }) {
                                             setIsDrawerOpen(true);
                                           }}
                                           className="p-1 text-slate-400 hover:text-emerald-600 transition"
-                                          title="Chỉnh sửa sản phẩm"
+                                          title="Chỉnh sửa sản phẩm & giá bán"
                                         >
                                           <Edit3 className="w-4 h-4" />
                                         </button>

@@ -65,9 +65,9 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
     try {
       if (activeModule === 'home') {
         await fetchAllData();
-      } else if (activeModule === 'sanpham' || activeModule === 'doisoat') {
+      } else if (activeModule === 'sanpham' || activeModule === 'sanpham_danhsach' || activeModule === 'sanpham_giatri' || activeModule === 'doisoat') {
         await Promise.all([
-          fetchModule(activeModule, true),
+          fetchModule('sanpham', true),
           fetchAggregatesData ? fetchAggregatesData({ force: true }) : Promise.resolve()
         ]);
       } else if (dataModule === 'sanphamkho' || dataModule === 'dubaonhap') {
@@ -139,8 +139,21 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
 
               <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
 
-              {/* Check if XNK Sub-module */}
-              {activeModule.startsWith('xnk_') ? (
+              {/* Check if Sanpham Giatri Sub-module */}
+              {activeModule === 'sanpham_giatri' ? (
+                <>
+                  <button
+                    onClick={() => onNavigate('sanpham')}
+                    className="text-slate-600 hover:text-blue-600 transition font-semibold shrink-0 cursor-pointer"
+                  >
+                    Danh sách sản phẩm
+                  </button>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span className="px-2.5 py-0.5 bg-amber-600 text-white rounded-md font-bold text-[11px] sm:text-xs shadow-xs tracking-tight shrink-0">
+                    Giá trị sản phẩm
+                  </span>
+                </>
+              ) : activeModule.startsWith('xnk_') ? (
                 <>
                   <button
                     onClick={() => onNavigate('xnk')}

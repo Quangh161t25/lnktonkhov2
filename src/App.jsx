@@ -15,6 +15,7 @@ import { DukienModule } from './components/modules/dukien/DukienModule';
 import { XuatModule } from './components/modules/xuat/XuatModule';
 import { ChuyenkhoModule } from './components/modules/chuyenkho/ChuyenkhoModule';
 import { SanphamModule } from './components/modules/sanpham/SanphamModule';
+import { SanphamHubModule } from './components/modules/sanpham/SanphamHubModule';
 import { SanphamkhoModule } from './components/modules/sanphamkho/SanphamkhoModule';
 import { CngiaspModule } from './components/modules/cngiasp/CngiaspModule';
 import { LenDonModule } from './components/modules/lendon/LenDonModule';
@@ -33,7 +34,7 @@ import { XnkNccModule } from './components/modules/xnk/XnkNccModule';
 import { CaidatModule } from './components/modules/caidat/CaidatModule';
 
 const VALID_MODULES = [
-  'home', 'tongquan', 'nhap', 'xuat', 'chuyenkho', 'sanpham',
+  'home', 'tongquan', 'nhap', 'xuat', 'chuyenkho', 'sanpham', 'sanpham_danhsach', 'sanpham_giatri',
   'sanphamkho', 'cngiasp', 'lendon', 'ton_npp', 'doisoat', 'nhanvien', 'khachhang',
   'xnk', 'xnk_tongquan', 'xnk_ytuong', 'xnk_mau', 'xnk_donhang', 'xnk_tiendo', 'xnk_ncc',
   'xnk_dukien', 'xnk_dubaonhap', 'caidat'
@@ -50,6 +51,9 @@ function getModuleFromLocation() {
   // Dự kiến hàng về & Dự báo nhập hàng đã chuyển vào XNK (link cũ /dukien, /dubaonhap vẫn dùng được)
   if (cleanPath === 'xnk/du_kien' || cleanPath === 'dukien') return 'xnk_dukien';
   if (cleanPath === 'xnk/du_bao_nhap' || cleanPath === 'dubaonhap') return 'xnk_dubaonhap';
+  if (cleanPath === 'sanpham/gia_tri' || cleanPath === 'sanpham/giatri' || cleanPath === 'sanpham_giatri') return 'sanpham_giatri';
+  if (cleanPath === 'sanpham/danh_sach' || cleanPath === 'sanpham/danhsach' || cleanPath === 'sanpham_danhsach') return 'sanpham_danhsach';
+  if (cleanPath === 'sanpham') return 'sanpham';
   if (cleanPath === 'xnk') return 'xnk';
 
   const first = cleanPath.split('/')[0];
@@ -58,6 +62,9 @@ function getModuleFromLocation() {
 
 function getPathForModule(mod) {
   if (mod === 'home') return '/';
+  if (mod === 'sanpham') return '/sanpham';
+  if (mod === 'sanpham_danhsach') return '/sanpham/danh_sach';
+  if (mod === 'sanpham_giatri') return '/sanpham/gia_tri';
   if (mod === 'xnk') return '/xnk';
   if (mod === 'xnk_tongquan') return '/xnk/tong_quan';
   if (mod === 'xnk_ytuong') return '/xnk/y_tuong';
@@ -181,7 +188,27 @@ export function App() {
             {activeModule === 'chuyenkho' && <ChuyenkhoModule />}
 
             {activeModule === 'sanpham' && (
-              <SanphamModule onNavigateWithFilter={handleNavigateWithFilter} />
+              <SanphamHubModule onNavigate={(mod) => navigateToModule(mod)} />
+            )}
+
+            {activeModule === 'sanpham_danhsach' && (
+              <SanphamModule
+                key="sanpham_danhsach"
+                activeSubModule="sanpham"
+                onBackToHub={() => navigateToModule('sanpham')}
+                onSelectSubModule={(mod) => navigateToModule(mod)}
+                onNavigateWithFilter={handleNavigateWithFilter}
+              />
+            )}
+
+            {activeModule === 'sanpham_giatri' && (
+              <SanphamModule
+                key="sanpham_giatri"
+                activeSubModule="giatri"
+                onBackToHub={() => navigateToModule('sanpham')}
+                onSelectSubModule={(mod) => navigateToModule(mod)}
+                onNavigateWithFilter={handleNavigateWithFilter}
+              />
             )}
 
             {activeModule === 'sanphamkho' && (

@@ -17,6 +17,7 @@ import {
   UserCheck,
   TrendingUp,
   Settings,
+  Coins,
   BarChart3,
   BadgePercent,
   ShoppingCart,
@@ -49,11 +50,12 @@ const ICON_MAP = {
   Users,
   UserCheck,
   TrendingUp,
-  Settings
+  Settings,
+  Coins
 };
 
 export function Sidebar({ activeModule, onSelectModule, isCollapsed, onToggleCollapse }) {
-  const { canAccessModule } = useAuth();
+  const { canAccessModule, currentUser, resolveRoleKey } = useAuth();
   const { appSettings } = useSettings();
 
   // Module con (vd: Dự kiến hàng về, Dự báo nhập hàng) nằm trong phân hệ cha, không hiện ở menu chính
@@ -98,7 +100,10 @@ export function Sidebar({ activeModule, onSelectModule, isCollapsed, onToggleCol
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 custom-scrollbar bg-white">
         {accessibleModules.map((item) => {
           const IconComponent = ICON_MAP[item.icon] || Package;
-          const isActive = activeModule === item.key || (item.key === 'xnk' && activeModule.startsWith('xnk_'));
+          const isSanphamActive = activeModule === 'sanpham' || activeModule === 'sanpham_danhsach' || activeModule === 'sanpham_giatri';
+          const isActive = activeModule === item.key || 
+            (item.key === 'xnk' && activeModule.startsWith('xnk_')) ||
+            (item.key === 'sanpham' && isSanphamActive);
 
           return (
             <button
