@@ -139,8 +139,21 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
 
               <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
 
-              {/* Check if Sanpham Giatri Sub-module */}
-              {activeModule === 'sanpham_giatri' ? (
+              {/* Check if Sanpham Sub-modules */}
+              {activeModule === 'sanpham_danhsach' ? (
+                <>
+                  <button
+                    onClick={() => onNavigate('sanpham')}
+                    className="text-slate-600 hover:text-blue-600 transition font-semibold shrink-0 cursor-pointer"
+                  >
+                    Danh sách sản phẩm
+                  </button>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span className="px-2.5 py-0.5 bg-blue-600 text-white rounded-md font-bold text-[11px] sm:text-xs shadow-xs tracking-tight shrink-0">
+                    Sản phẩm
+                  </span>
+                </>
+              ) : activeModule === 'sanpham_giatri' ? (
                 <>
                   <button
                     onClick={() => onNavigate('sanpham')}

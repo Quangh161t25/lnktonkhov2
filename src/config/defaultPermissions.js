@@ -46,7 +46,7 @@ export const DEFAULT_PERMISSIONS = {
     },
     KHO: {
       modules: [
-        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanphamkho", "ton_npp",
+        "home", "tongquan", "nhap", "dukien", "xuat", "chuyenkho", "sanpham", "sanpham_danhsach", "sanphamkho", "ton_npp",
         "xnk", "xnk_ytuong", "xnk_mau", "xnk_donhang"
       ],
       actions: [

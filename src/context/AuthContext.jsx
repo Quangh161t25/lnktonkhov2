@@ -203,10 +203,10 @@ export function AuthProvider({ children }) {
     if (moduleKey === 'sanpham_giatri') {
       return roleKey === 'ADMIN' || roleKey === 'KT';
     }
+    const allowed = getAllowedModules();
     if (moduleKey === 'sanpham_danhsach') {
       return allowed.includes('sanpham') || allowed.includes('sanpham_danhsach');
     }
-    const allowed = getAllowedModules();
     if (allowed.includes(moduleKey)) return true;
     // Dự kiến hàng về & Dự báo nhập hàng nằm trong XNK nhưng vẫn dùng quyền riêng
     if (moduleKey === 'xnk_dukien') return allowed.includes('dukien');

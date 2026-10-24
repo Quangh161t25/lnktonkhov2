@@ -426,13 +426,13 @@ export function SanphamModule({
 
   return (
     <div className="space-y-2">
-      {/* Submodule Switcher Header: Sản phẩm & Giá trị sản phẩm */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-2">
+      {/* Top Header Bar with [Quay lại] and Title */}
+      <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="flex items-center gap-2.5">
           {onBackToHub && (
             <button
               onClick={onBackToHub}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
               title="Quay lại Hub Danh sách sản phẩm"
             >
               <ArrowLeft className="w-4 h-4 text-slate-500" />
@@ -440,50 +440,29 @@ export function SanphamModule({
             </button>
           )}
 
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl">
-            <button
-              onClick={() => onSelectSubModule?.('sanpham_danhsach')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                !isGiatriMode
-                  ? 'bg-white text-emerald-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-              }`}
-            >
-              <Package className={`w-4 h-4 ${!isGiatriMode ? 'text-emerald-600' : 'text-slate-400'}`} />
-              <span>Sản phẩm</span>
-            </button>
-
-            {canAccessGiatri && (
-              <button
-                onClick={() => onSelectSubModule?.('sanpham_giatri')}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  isGiatriMode
-                    ? 'bg-white text-amber-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-                }`}
-              >
-                <Coins className={`w-4 h-4 ${isGiatriMode ? 'text-amber-600' : 'text-slate-400'}`} />
-                <span>Giá trị sản phẩm</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-amber-100 text-amber-800">
-                  Admin & KT
-                </span>
-              </button>
-            )}
+          <div className="flex items-center gap-2">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+              isGiatriMode ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+            }`}>
+              {isGiatriMode ? <Coins className="w-4 h-4" /> : <Package className="w-4 h-4" />}
+            </div>
+            <div>
+              <h2 className="text-xs sm:text-sm font-bold text-slate-800 leading-none">
+                {isGiatriMode ? 'Giá trị sản phẩm' : 'Sản phẩm'}
+              </h2>
+              <span className="text-[10px] text-slate-400">
+                {isGiatriMode ? 'Theo dõi giá bán (Cột C) và tổng giá trị tồn kho' : 'Quản lý danh mục sản phẩm & tồn kho tổng'}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 pr-2">
-          {isGiatriMode ? (
-            <span className="flex items-center gap-1.5 text-amber-800 font-semibold text-[11px] bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-              Cột C: Giá bán (Thật) & Cột Giá trị (Ảo = Tồn cuối × Giá bán)
-            </span>
-          ) : (
-            <span className="text-slate-500 font-medium text-[11px]">
-              Quản lý danh mục sản phẩm, biến động nhập xuất & tồn kho tổng
-            </span>
-          )}
-        </div>
+        {isGiatriMode && (
+          <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+            <ShieldCheck className="w-3 h-3 text-amber-600" />
+            Admin & Kế toán
+          </span>
+        )}
       </div>
 
       {/* KPI Cards for Giá trị sản phẩm (Only in giatri mode) */}
