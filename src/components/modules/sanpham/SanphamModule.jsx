@@ -71,6 +71,7 @@ export function SanphamModule({
     nppProductIdsData, 
     fetchAggregatesData, 
     appendRow, 
+    appendRows,
     updateRow, 
     deleteRow, 
     fetchModule, 
@@ -410,21 +411,160 @@ export function SanphamModule({
   };
 
   const handleImportExcelRows = async (excelRows) => {
+    if (!excelRows || excelRows.length <= 1) return;
     try {
+      const headerRow = excelRows[0] || [];
       const dataRows = excelRows.slice(1);
-      for (const row of dataRows) {
-        if (row.some(c => c !== '')) {
-          await appendRow('sanpham', row);
+
+      // 1. Phân tích tiêu đề cột trong file Excel để trích xuất đúng cột
+      const cleanHeaders = headerRow.map(h => (h || '').toString().trim().toLowerCase());
+      
+      let idIdx = cleanHeaders.findIndex(h => 
+        h === 'id' || h === 'ma_sp' || h === 'mã sp' || h === 'mã sản phẩm' || h === 'masp' || h === 'mã hàng' || h === 'sku'
+      );
+      if (idIdx === -1) idIdx = 0;
+
+      let nameIdx = cleanHeaders.findIndex(h => 
+        h === 'ten_sp' || h === 'tên sp' || h === 'tên sản phẩm' || h === 'tensp' || h === 'tên hàng' || h === 'name'
+      );
+      if (nameIdx === -1 && cleanHeaders.length > 1) nameIdx = 1;
+
+      let modelIdx = cleanHeaders.findIndex(h => 
+        h === 'model' || h === 'quy cách' || h === 'quy cach'
+      );
+      if (modelIdx === -1 && cleanHeaders.length > 2 && !cleanHeaders[2].includes('tồn') && !cleanHeaders[2].includes('nhập')) {
+        modelIdx = 2;
+      }
+
+      let imgIdx = cleanHeaders.findIndex(h => 
+        h === 'anh' || h === 'ảnh' || h === 'link ảnh' || h === 'link anh' || h === 'hình ảnh' || h === 'image'
+      );
+      if (imgIdx === -1 && cleanHeaders.length > 3 && !cleanHeaders[3].includes('tồn') && !cleanHeaders[3].includes('xuất')) {
+        imgIdx = 3;
+      }
+
+      let priceIdx = cleanHeaders.findIndex(h => 
+        h === 'gia_ban' || h === 'giá bán' || h === 'giá bán (cột c)' || h === 'gia ban' || h === 'đơn giá' || h === 'don gia' || h === 'price' || h === 'gia'
+      );
+      if (priceIdx === -1 && cleanHeaders.length === 6) priceIdx = 4;
+
+      let noteIdx = cleanHeaders.findIndex(h => 
+        h === 'ghi_chu' || h === 'ghi chú' || h === 'ghi chu' || h === 'note' || h === 'mô tả' || h === 'mo ta'
+      );
+      if (noteIdx === -1 && cleanHeaders.length === 6) noteIdx = 5;
+
+      // 2. Lấy dữ liệu sản phẩm mới nhất để xác định chính xác dòng sheetRow và ID hiện có
+      const freshProducts = await fetchModule('sanpham', true) || productData || [];
+      
+      // Bản đồ sản phẩm đã có: idUpper -> { sheetRow, row }
+      const existingMap = new Map();
+      if (freshProducts && freshProducts.length > 1) {
+        freshProducts.slice(1).forEach((r, idx) => {
+          const id = (r[0] || '').toString().trim().toUpperCase();
+          if (id && !existingMap.has(id)) {
+            existingMap.set(id, {
+              sheetRow: idx + 2,
+              row: r
+            });
+          }
+        });
+      }
+
+      let updatedCount = 0;
+      const newRowsToAppend = [];
+
+      for (const excelRow of dataRows) {
+        if (!excelRow || !excelRow.some(c => c !== '')) continue;
+        const rawId = (excelRow[idIdx] || '').toString().trim().toUpperCase();
+        if (!rawId) continue;
+
+        if (existingMap.has(rawId)) {
+          // ID ĐÃ CÓ RỒI -> Cập nhật lại dòng đó
+          const existing = existingMap.get(rawId);
+          const currentData = existing.row;
+
+          const updatedName = nameIdx !== -1 && excelRow[nameIdx] !== '' && excelRow[nameIdx] !== undefined 
+            ? excelRow[nameIdx].toString().trim() 
+            : (currentData[1] || '');
+
+          const updatedModel = modelIdx !== -1 && excelRow[modelIdx] !== '' && excelRow[modelIdx] !== undefined 
+            ? excelRow[modelIdx].toString().trim() 
+            : (currentData[2] || '');
+
+          const updatedImg = imgIdx !== -1 && excelRow[imgIdx] !== '' && excelRow[imgIdx] !== undefined 
+            ? excelRow[imgIdx].toString().trim() 
+            : (currentData[3] || '');
+
+          const updatedPrice = priceIdx !== -1 && excelRow[priceIdx] !== '' && excelRow[priceIdx] !== undefined 
+            ? cleanNumber(excelRow[priceIdx]) 
+            : cleanNumber(currentData[4]);
+
+          const updatedNote = noteIdx !== -1 && excelRow[noteIdx] !== '' && excelRow[noteIdx] !== undefined 
+            ? excelRow[noteIdx].toString().trim() 
+            : (currentData[5] || '');
+
+          const updatedRowValues = [
+            rawId,
+            updatedName,
+            updatedModel,
+            updatedImg,
+            updatedPrice,
+            updatedNote
+          ];
+
+          await updateRow('sanpham', existing.sheetRow, updatedRowValues);
+          existing.row = updatedRowValues; // Cập nhật bộ nhớ đệm
+          updatedCount++;
+        } else {
+          // ID CHƯA CÓ -> Thêm mới vào cuối
+          const newName = nameIdx !== -1 && excelRow[nameIdx] !== undefined ? excelRow[nameIdx].toString().trim() : '';
+          const newModel = modelIdx !== -1 && excelRow[modelIdx] !== undefined ? excelRow[modelIdx].toString().trim() : '';
+          const newImg = imgIdx !== -1 && excelRow[imgIdx] !== undefined ? excelRow[imgIdx].toString().trim() : '';
+          const newPrice = priceIdx !== -1 && excelRow[priceIdx] !== undefined ? cleanNumber(excelRow[priceIdx]) : 0;
+          const newNote = noteIdx !== -1 && excelRow[noteIdx] !== undefined ? excelRow[noteIdx].toString().trim() : '';
+
+          const newRowValues = [
+            rawId,
+            newName,
+            newModel,
+            newImg,
+            newPrice,
+            newNote
+          ];
+
+          newRowsToAppend.push(newRowValues);
+          existingMap.set(rawId, {
+            sheetRow: freshProducts.length + 1 + newRowsToAppend.length,
+            row: newRowValues
+          });
         }
       }
-      await fetchModule('sanpham');
-      alert(`Đã nhập thành công ${dataRows.length} dòng.`);
+
+      // Thêm toàn bộ các dòng mới vào Sheet
+      if (newRowsToAppend.length > 0) {
+        if (appendRows) {
+          await appendRows('sanpham', newRowsToAppend);
+        } else {
+          for (const nr of newRowsToAppend) {
+            await appendRow('sanpham', nr);
+          }
+        }
+      }
+
+      // Đồng bộ lại dữ liệu sau khi nhập
+      await Promise.all([
+        fetchModule('sanpham', true),
+        fetchAggregatesData ? fetchAggregatesData({ force: true }) : Promise.resolve()
+      ]);
+
+      alert(`Nhập Excel thành công!\n- Cập nhật dòng đã có: ${updatedCount} sản phẩm\n- Thêm mới: ${newRowsToAppend.length} sản phẩm.`);
     } catch (err) {
+      console.error("Lỗi khi import Excel sản phẩm:", err);
       alert("Lỗi khi import Excel: " + err.message);
     }
   };
 
-  return (
+    return (
     <div className="space-y-2">
       {/* Top Header Bar with [Quay lại] and Title */}
       <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
