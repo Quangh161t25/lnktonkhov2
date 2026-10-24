@@ -2,7 +2,7 @@ import React from 'react';
 import appLogo from '../../assets/logo.png';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
-import { MODULE_DEFINITIONS } from '../../config/constants';
+import { MODULE_DEFINITIONS, APP_VERSION } from '../../config/constants';
 import {
   Home,
   ArrowDownToLine,
@@ -81,7 +81,7 @@ export function Sidebar({ activeModule, onSelectModule, isCollapsed, onToggleCol
                 {appSettings.appName || 'LNK TỒN KHO'}
               </h2>
               <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider block">
-                v{appSettings.appVersion || '2.0.0'}
+                v{APP_VERSION}
               </span>
             </div>
           )}

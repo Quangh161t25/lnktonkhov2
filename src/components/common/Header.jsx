@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useSettings } from '../../context/SettingsContext';
-import { MODULE_DEFINITIONS } from '../../config/constants';
+import { MODULE_DEFINITIONS, APP_VERSION } from '../../config/constants';
 import { 
   PanelLeft,
   Home,
@@ -267,7 +267,7 @@ export function Header({ activeModule, onToggleSidebar, onNavigate }) {
                     <p className="text-[10px] text-amber-600">Có sản phẩm chạm ngưỡng cần lập đơn nhập bổ sung.</p>
                   </div>
                   <div className="p-2 bg-blue-50 border border-blue-100 rounded-xl">
-                    <p className="font-bold text-blue-800 text-[11px]">Phiên bản ERP v2.0.0</p>
+                    <p className="font-bold text-blue-800 text-[11px]">Phiên bản ERP v{APP_VERSION}</p>
                     <p className="text-[10px] text-blue-600">Hệ thống đã nâng cấp toàn bộ giao diện React chuyên nghiệp.</p>
                   </div>
                 </div>

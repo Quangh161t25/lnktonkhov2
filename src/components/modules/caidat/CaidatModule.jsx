@@ -60,7 +60,7 @@ export function CaidatModule() {
 
   // System form state
   const [sysAppName, setSysAppName] = useState(appSettings?.appName || 'LNK TỒN KHO - ERP SYSTEM');
-  const [sysAppVersion, setSysAppVersion] = useState(appSettings?.appVersion || '2.0.0');
+  const [sysAppVersion, setSysAppVersion] = useState(appSettings?.appVersion || APP_VERSION);
   const [sysPageSize, setSysPageSize] = useState(appSettings?.pageSize || 200);
   const [sysLowStock, setSysLowStock] = useState(appSettings?.lowStockThreshold || 10);
   const [sysDefaultWarehouse, setSysDefaultWarehouse] = useState(appSettings?.defaultWarehouse || 'KHO 1');

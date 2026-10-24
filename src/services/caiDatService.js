@@ -1,4 +1,4 @@
-import { CONFIG, MODULE_DEFINITIONS } from '../config/constants';
+import { CONFIG, MODULE_DEFINITIONS, APP_VERSION } from '../config/constants';
 import { fetchSheetValues, batchClearAndWriteSheet, updateSheetRange } from './googleSheetsService';
 
 /**
@@ -147,7 +147,7 @@ export function buildCaiDatRows({ settings, permissions, currentUser, rawAdditio
   const rows = [
     ["id", "ten_thiet_lap", "gia_tri", "nhom", "kieu_du_lieu", "mo_ta", "ngay_cap_nhat", "nguoi_cap_nhat"],
     ["SYS_APP_NAME", "Tên hệ thống", settings?.appName || "LNK TỒN KHO - ERP SYSTEM", "HE_THONG", "text", "Tên tiêu đề hiển thị trên thanh điều hướng và giao diện chính", dateStr, userStr],
-    ["SYS_APP_VERSION", "Phiên bản phần mềm", settings?.appVersion || "2.0.0", "HE_THONG", "text", "Phiên bản phát hành của hệ thống", dateStr, userStr],
+    ["SYS_APP_VERSION", "Phiên bản phần mềm", settings?.appVersion || APP_VERSION, "HE_THONG", "text", "Phiên bản phát hành của hệ thống", dateStr, userStr],
     ["SYS_PAGE_SIZE", "Số bản ghi mỗi trang", (settings?.pageSize || 200).toString(), "HE_THONG", "number", "Số lượng dòng tối đa tải và hiển thị trên mỗi trang bảng dữ liệu", dateStr, userStr],
     ["WAREHOUSE_LIST", "Danh sách kho hàng", (settings?.warehouses || ['KHO 1', 'KHO 2', 'KHO 3', 'KHO 4', 'KHO 5']).join(', '), "KHO_HANG", "list", "Danh sách các kho hàng hoạt động trong hệ thống", dateStr, userStr],
     ["DEFAULT_WAREHOUSE", "Kho mặc định", settings?.defaultWarehouse || "KHO 1", "KHO_HANG", "text", "Kho mặc định được chọn tự động khi tạo phiếu", dateStr, userStr],

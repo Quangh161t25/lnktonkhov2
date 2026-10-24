@@ -24,9 +24,11 @@ export const CONFIG = {
   permissionsFile: "permissions.json"
 };
 
+export const APP_VERSION = "2.0.0.0";
+
 export const DEFAULT_APP_SETTINGS = {
   appName: "LNK TỒN KHO - ERP SYSTEM",
-  appVersion: "2.0.0",
+  appVersion: APP_VERSION,
   pageSize: 200,
   warehouses: ['KHO 1', 'KHO 2', 'KHO 3', 'KHO 4', 'KHO 5'],
   defaultWarehouse: 'KHO 1',
